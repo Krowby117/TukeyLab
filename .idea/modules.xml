@@ -2,7 +2,7 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/.idea/edaApp.iml" filepath="$PROJECT_DIR$/.idea/edaApp.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/TukeyLab.iml" filepath="$PROJECT_DIR$/.idea/TukeyLab.iml" />
     </modules>
   </component>
 </project>

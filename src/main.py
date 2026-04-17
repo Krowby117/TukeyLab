@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("My App")
+        self.setWindowTitle("TukeyLab")
         self.setMinimumSize(1200, 800)
 
         self.eda = InteractiveEDA()
