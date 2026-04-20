@@ -15,10 +15,12 @@ from PySide6.QtWidgets import (
     QStyle,
     QScrollArea,
     QSplitter,
-    QSizePolicy
+    QSizePolicy,
+    QMessageBox,
+    QFormLayout
 )
 from numpy.matlib import empty
-from components.helper_classes import TableMaker
+from components.helper_classes import TableMaker, DataInformation
 
 
 class InteractiveEDA(QMainWindow):
@@ -27,6 +29,8 @@ class InteractiveEDA(QMainWindow):
 
         self.dataframes = {}
         self.current_dataframe = ""
+        self.table_maker = None
+        self.data_info = None
 
         ## --- Actual table view of the selected file --- ##
         self.data_viewer = DataViewer()
@@ -68,8 +72,14 @@ class InteractiveEDA(QMainWindow):
         self.file_container.setPalette(palette)
 
         ## --- Plotly visualizer sidebar --- ##
-        self.new_graph_button = QPushButton("New Table")
-        self.new_graph_button.clicked.connect(self.generate_table)
+        single_file_graph = QPushButton("+")
+        single_file_graph.clicked.connect(lambda: self.generate_table(1))
+
+        multi_file_graph = QPushButton("+")
+        multi_file_graph.clicked.connect(lambda: self.generate_table(2))
+
+        get_data_info = QPushButton("+")
+        get_data_info.clicked.connect(self.generate_data_info)
 
         self.graph_scroller = QScrollArea()
         self.graph_scroller.setWidgetResizable(True)
@@ -81,7 +91,11 @@ class InteractiveEDA(QMainWindow):
         self.glayout.addStretch()
 
         self.right_layout = QVBoxLayout()
-        self.right_layout.addWidget(self.new_graph_button)
+        layout = QFormLayout()
+        layout.addRow("Create Single-File Graph: ", single_file_graph)
+        layout.addRow("Create Multi-File Graph: ", multi_file_graph)
+        layout.addRow("See Data Information: ", get_data_info)
+        self.right_layout.addLayout(layout)
         self.right_layout.addWidget(self.graph_scroller)
 
         self.right_widget = QWidget()
@@ -143,13 +157,42 @@ class InteractiveEDA(QMainWindow):
         self.current_dataframe = name
         self.data_viewer.set_data(data)
 
-    def generate_table(self):
-        # if the dataset list is not valid then stop
-        if not self.dataframes:
+    def generate_table(self, num: int):
+        if num == 1:    # if making a single-file graph
+            if len(self.dataframes) < 1:    # make sure there is at least one file loaded
+                QMessageBox.information(self, "No Data Loaded","At least one dataset is required before a table can be created.")
+                return
+
+            # then open the popup for creating a table
+            self.table_maker = TableMaker(self.dataframes, self)
+            self.table_maker.setModal(True)
+            self.table_maker.finished.connect(self._on_table_maker_closed)
+            self.table_maker.open()
+
+        if num == 2:  # if making a multi-file graph
+            if len(self.dataframes) < 2:  # make sure there are at least two files loaded
+                QMessageBox.information(self, "Not Enough Data Loaded","At least two datasets are required before a table can be created.")
+                return
+
+            QMessageBox.information(self, "Work In Progress","No functionality yet.")
+
+    def _on_table_maker_closed(self, _result):
+        self.table_maker = None
+
+    def generate_data_info(self):
+        if len(self.dataframes) < 1:  # make sure there is at least one file loaded
+            QMessageBox.information(self, "No Data Loaded",
+                                    "At least one dataset is required before data information be viewed.")
             return
 
-        table_maker = TableMaker(self.dataframes)
-        table_maker.exec()
+        # then open the popup for creating a table
+        self.data_info = DataInformation(self.dataframes, self)
+        self.data_info.setModal(True)
+        self.data_info.finished.connect(self._on_data_info_closed)
+        self.data_info.open()
+
+    def _on_data_info_closed(self, _result):
+        self.data_info = None
 
     def add_dataset_button(self, name):
         btn = QToolButton()
