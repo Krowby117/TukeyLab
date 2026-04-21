@@ -15,13 +15,16 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QTextBrowser,
     QTableWidget,
-    QTableWidgetItem
+    QTableWidgetItem,
+    QCheckBox
 )
 
 import seaborn as sns
 import pandas as pd
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
+from pandas.io.sas.sas_constants import dataset_length
+
 
 class MplCanvas(FigureCanvas):
     def __init__(self, parent=None):
@@ -30,17 +33,18 @@ class MplCanvas(FigureCanvas):
         super().__init__(fig)
         self.setParent(parent)
 
-class TableMaker(QDialog):
+class MonoFileGraph(QDialog):
     default_text: str = " --- "
-    table_options = {
-    #   graph type          data type   inputs
-        "Histogram":        ["numerical", 1],
-        "Scatter Plot":     ["numerical", 2],
-        "Box Plot":         ["numerical", 1],
-        "Heatmap":          ["numerical", 2],
-        #"Bar Chart":        ["categorical", 0],
-        #"Pie Chart":        ["categorical", 0]
-    }
+    table_options = [
+        "Histogram",
+        "Scatter Plot",
+        "Box Plot",
+        "Heatmap",
+        "KDE Plot",
+        "Correlation Matrix",
+        #"Bar Chart",
+        #"Pie Chart",
+    ]
 
     graphType: str   = default_text
 
@@ -54,7 +58,7 @@ class TableMaker(QDialog):
 
         self.tableCombo = QComboBox()
         self.tableCombo.addItem(self.default_text)
-        self.tableCombo.addItems(list(self.table_options.keys()))
+        self.tableCombo.addItems(list(self.table_options))
         self.tableCombo.currentTextChanged.connect(self.update_inputs)
 
         self.fileCombo = QComboBox()
@@ -70,6 +74,8 @@ class TableMaker(QDialog):
         self.inputStack.addWidget(self.scatter_inputs())
         self.inputStack.addWidget(self.box_inputs())
         self.inputStack.addWidget(self.heatmap_inputs())
+        self.inputStack.addWidget(self.kde_inputs())
+        self.inputStack.addWidget(self.correlation_inputs())
 
         self.graphView = MplCanvas(self)
 
@@ -98,6 +104,8 @@ class TableMaker(QDialog):
             "Scatter Plot": 2,
             "Box Plot": 3,
             "Heatmap": 4,
+            "KDE Plot": 5,
+            "Correlation Matrix": 6
         }
 
         self.graphType = graph_type
@@ -106,13 +114,18 @@ class TableMaker(QDialog):
 
     def _combo_has_valid_selection(self, combo: QComboBox) -> bool:
         text = combo.currentText().strip()
-        valid = bool(text) and text != self.default_text.strip()
+        return bool(text) and text != self.default_text.strip()
 
-        #if not valid: QMessageBox.information(self, "Cannot Generate Graph", "Please select required components.")
-
-        return valid
+    def _reset_plot_area(self):
+        # Recreate the main axis so heatmap colorbar/layout changes never persist.
+        fig = self.graphView.figure
+        fig.clear()
+        self.graphView.ax = fig.add_subplot(111)
+        self.graphView.draw()
 
     def generate_graph(self):
+        self._reset_plot_area()
+
         if not self._combo_has_valid_selection(self.fileCombo):
             return
 
@@ -124,14 +137,10 @@ class TableMaker(QDialog):
 
             feature = self.hist_feature.currentText()
 
-            self.graphView.ax.clear()
-
             self.graphView.ax.hist(df[feature].dropna(), bins=self.bins.value())
-
             self.graphView.ax.set_title(f"{feature} Distribution")
             self.graphView.ax.set_xlabel(feature)
             self.graphView.ax.set_ylabel("Frequency")
-
             self.graphView.draw()
 
         if self.graphType == "Scatter Plot":
@@ -142,14 +151,10 @@ class TableMaker(QDialog):
             scat_x = self.scat_feature_x.currentText()
             scat_y = self.scat_feature_y.currentText()
 
-            self.graphView.ax.clear()
-
             self.graphView.ax.scatter(df[scat_x], df[scat_y])
-
             self.graphView.ax.set_title(f"{scat_x} vs. {scat_y}")
             self.graphView.ax.set_xlabel(scat_x)
             self.graphView.ax.set_ylabel(scat_y)
-
             self.graphView.draw()
 
         if self.graphType == "Box Plot":
@@ -158,12 +163,8 @@ class TableMaker(QDialog):
 
             feature = self.box_feature.currentText()
 
-            self.graphView.ax.clear()
-
             self.graphView.ax.boxplot(df[feature].dropna(), vert=False)
-
             self.graphView.ax.set_title(f"{feature} Box Plot")
-
             self.graphView.draw()
 
         if self.graphType == "Heatmap":
@@ -173,76 +174,88 @@ class TableMaker(QDialog):
 
             hm_x = self.heatmap_feature_x.currentText()
             hm_y = self.heatmap_feature_y.currentText()
-            data = df[[hm_x, hm_y]]
-
-            self.graphView.ax.clear()
+            data = df[[hm_x, hm_y]].apply(pd.to_numeric, errors='coerce').dropna()
+            if data.empty:
+                QMessageBox.warning(self, "Heatmap", "No numeric rows available for the selected columns.")
+                return
 
             sns.heatmap(data, annot=True, cmap='coolwarm', ax=self.graphView.ax)
-
             self.graphView.ax.set_title(f"{hm_x} vs. {hm_y}")
-
             self.graphView.draw()
 
-    def generate_report(self, data):
-        numerical_cols = data.select_dtypes(include=['number']).columns.tolist()
-        categorical_cols = data.select_dtypes(include=['object', 'category', 'boolean']).columns.tolist()
-        datetime_cols = data.select_dtypes(include=['datetime64[ns]', 'datetime']).columns.tolist()
+        if self.graphType == "KDE Plot":
+            if not self._combo_has_valid_selection(self.kde_feature):
+                return
 
-        report = {
-            "numerical": numerical_cols + datetime_cols,
-            "categorical": categorical_cols,
-            "distribution": numerical_cols
-        }
+            x = self.kde_feature.currentText()
 
-        return report
+            self.graphView.ax.clear()
+            df[x].dropna().plot(kind='kde', ax=self.graphView.ax)
+            self.graphView.ax.set_title(f"{x} Distribution (KDE)")
+            self.graphView.draw()
+
+        if self.graphType == "Correlation Matrix":
+            data = df.select_dtypes(include=["number"])
+            if data.shape[1] < 2:
+                self.corr_label.setText("At least two numerical columns must be present in selected datafile.")
+                return
+
+            self.corr_label.setText("")
+            corr = data.corr(numeric_only=True)
+
+            sns.heatmap(corr, annot=True, cmap="coolwarm", ax=self.graphView.ax, vmin=-1, vmax=1)
+            self.graphView.ax.set_title("Correlation Matrix")
+            self.graphView.draw()
 
     def update_feature_selections(self):
         file = self.fileCombo.currentText()
 
+        if file == self.default_text:
+            self.generate_graph()
+            return
+
+        df = self.dataframes[file]
+        numeric_data = df.select_dtypes(include=['number']).columns.tolist()
+
+        # previous selections for all graph types, lets it save selections while looking at options
+        prev_hist = self.hist_feature.currentText()
+        prev_x = self.scat_feature_x.currentText()
+        prev_y = self.scat_feature_y.currentText()
+        prev_b = self.box_feature.currentText()
+        prev_hx = self.heatmap_feature_x.currentText()
+        prev_hy = self.heatmap_feature_y.currentText()
+        prev_kde = self.kde_feature.currentText()
+
         if self.graphType == "Histogram":
-            self.hist_feature.clear()
-            self.hist_feature.addItem(self.default_text)
-
-            if file != self.default_text:
-                df = self.dataframes[file]
-                self.hist_feature.addItems(self.generate_report(df)["numerical"])
-
+            self.restore_selection(self.hist_feature, numeric_data, prev_hist)
         if self.graphType == "Scatter Plot":
-            self.scat_feature_x.clear()
-            self.scat_feature_x.addItem(self.default_text)
-            self.scat_feature_y.clear()
-            self.scat_feature_y.addItem(self.default_text)
-
-            if file != self.default_text:
-                df = self.dataframes[file]
-                self.scat_feature_x.addItems(self.generate_report(df)["numerical"])
-                self.scat_feature_y.addItems(self.generate_report(df)["numerical"])
-
+            self.restore_selection(self.scat_feature_x, numeric_data, prev_x)
+            self.restore_selection(self.scat_feature_y, numeric_data, prev_y)
         if self.graphType == "Box Plot":
-            self.box_feature.clear()
-            self.box_feature.addItem(self.default_text)
-
-            if file != self.default_text:
-                df = self.dataframes[file]
-                self.box_feature.addItems(self.generate_report(df)["numerical"])
-
+            self.restore_selection(self.box_feature, numeric_data, prev_b)
         if self.graphType == "Heatmap":
-            self.heatmap_feature_x.clear()
-            self.heatmap_feature_x.addItem(self.default_text)
-            self.heatmap_feature_y.clear()
-            self.heatmap_feature_y.addItem(self.default_text)
+            self.restore_selection(self.heatmap_feature_x, numeric_data, prev_hx)
+            self.restore_selection(self.heatmap_feature_y, numeric_data, prev_hy)
+        if self.graphType == "KDE Plot":
+            self.restore_selection(self.kde_feature, numeric_data, prev_kde)
 
-            if file != self.default_text:
-                df = self.dataframes[file]
-                self.heatmap_feature_x.addItems(self.generate_report(df)["numerical"])
-                self.heatmap_feature_y.addItems(self.generate_report(df)["numerical"])
+        self.generate_graph()
+
+    def restore_selection(self, combo: QComboBox, data: list[str], prev: str):
+        combo.blockSignals(True)
+        combo.clear()
+        combo.addItems(data)
+
+        if prev in data: combo.setCurrentText(prev)
+        elif data: combo.setCurrentText(data[0])
+
+        combo.blockSignals(False)
 
     def histo_inputs(self):
         widget = QWidget()
         layout = QVBoxLayout()
 
         self.hist_feature = QComboBox()
-        self.hist_feature.addItem(self.default_text)
         self.hist_feature.currentTextChanged.connect(self.generate_graph)
 
         self.bins = QSlider()
@@ -261,11 +274,9 @@ class TableMaker(QDialog):
         layout = QHBoxLayout()
 
         self.scat_feature_x = QComboBox()
-        self.scat_feature_x.addItem(self.default_text)
         self.scat_feature_x.currentTextChanged.connect(self.generate_graph)
 
         self.scat_feature_y = QComboBox()
-        self.scat_feature_y.addItem(self.default_text)
         self.scat_feature_y.currentTextChanged.connect(self.generate_graph)
 
         layout.addWidget(self.scat_feature_x)
@@ -292,15 +303,36 @@ class TableMaker(QDialog):
         layout = QHBoxLayout()
 
         self.heatmap_feature_x = QComboBox()
-        self.heatmap_feature_x.addItem(self.default_text)
         self.heatmap_feature_x.currentTextChanged.connect(self.generate_graph)
 
         self.heatmap_feature_y = QComboBox()
-        self.heatmap_feature_y.addItem(self.default_text)
         self.heatmap_feature_y.currentTextChanged.connect(self.generate_graph)
 
         layout.addWidget(self.heatmap_feature_x)
         layout.addWidget(self.heatmap_feature_y)
+
+        widget.setLayout(layout)
+        return widget
+
+    def kde_inputs(self):
+        widget = QWidget()
+        layout = QVBoxLayout()
+
+        self.kde_feature = QComboBox()
+        self.kde_feature.currentTextChanged.connect(self.generate_graph)
+
+        layout.addWidget(self.kde_feature)
+
+        widget.setLayout(layout)
+        return widget
+
+    def correlation_inputs(self):
+        widget = QWidget()
+        layout = QVBoxLayout()
+
+        self.corr_label = QLabel("")
+
+        layout.addWidget(self.corr_label)
 
         widget.setLayout(layout)
         return widget
@@ -374,3 +406,42 @@ class DataInformation(QDialog):
                     display = str(value)
 
                 self.table.setItem(row, col, QTableWidgetItem(display))
+
+class MissingValueAnalysis(QDialog):
+    def __init__(self, dfs, parent=None):
+        super().__init__(parent)
+        self.resize(900, 700)
+        self.dataframes = dfs
+        self.setWindowTitle("Missing Value Analysis")
+
+        self.fileCombo = QComboBox()
+        self.fileCombo.addItems(list(dfs.keys()))
+        self.fileCombo.currentTextChanged.connect(self.update_plot)
+
+        self.canvas = MplCanvas(self)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok)
+        buttons.accepted.connect(self.accept)
+
+        layout = QVBoxLayout()
+        layout.addWidget(self.fileCombo)
+        layout.addWidget(self.canvas)
+        layout.addWidget(buttons)
+        self.setLayout(layout)
+
+        self.update_plot(self.fileCombo.currentText())
+
+    def update_plot(self, file):
+        df = self.dataframes[file]
+        missing = df.isna().sum()
+        missing = missing[missing > 0]  # only show columns that have nulls
+
+        self.canvas.ax.clear()
+        if missing.empty:
+            self.canvas.ax.text(0.5, 0.5, "No missing values!",
+                                ha='center', va='center', transform=self.canvas.ax.transAxes)
+        else:
+            missing.plot(kind='bar', ax=self.canvas.ax, color='salmon')
+            self.canvas.ax.set_title("Missing Values Per Column")
+            self.canvas.ax.set_ylabel("Count")
+        self.canvas.draw()

@@ -20,7 +20,7 @@ from PySide6.QtWidgets import (
     QFormLayout
 )
 from numpy.matlib import empty
-from components.helper_classes import TableMaker, DataInformation
+from components.custom_dialogs import MonoFileGraph, DataInformation, MissingValueAnalysis
 
 
 class InteractiveEDA(QMainWindow):
@@ -79,7 +79,10 @@ class InteractiveEDA(QMainWindow):
         multi_file_graph.clicked.connect(lambda: self.generate_table(2))
 
         get_data_info = QPushButton("+")
-        get_data_info.clicked.connect(self.generate_data_info)
+        get_data_info.clicked.connect(lambda: self.generate_data_info(1))
+
+        missing_data_info = QPushButton("+")
+        missing_data_info.clicked.connect(lambda: self.generate_data_info(2))
 
         self.graph_scroller = QScrollArea()
         self.graph_scroller.setWidgetResizable(True)
@@ -95,6 +98,7 @@ class InteractiveEDA(QMainWindow):
         layout.addRow("Create Single-File Graph: ", single_file_graph)
         layout.addRow("Create Multi-File Graph: ", multi_file_graph)
         layout.addRow("See Data Information: ", get_data_info)
+        layout.addRow("Missing Data Analysis: ", missing_data_info)
         self.right_layout.addLayout(layout)
         self.right_layout.addWidget(self.graph_scroller)
 
@@ -164,7 +168,7 @@ class InteractiveEDA(QMainWindow):
                 return
 
             # then open the popup for creating a table
-            self.table_maker = TableMaker(self.dataframes, self)
+            self.table_maker = MonoFileGraph(self.dataframes, self)
             self.table_maker.setModal(True)
             self.table_maker.finished.connect(self._on_table_maker_closed)
             self.table_maker.open()
@@ -179,17 +183,23 @@ class InteractiveEDA(QMainWindow):
     def _on_table_maker_closed(self, _result):
         self.table_maker = None
 
-    def generate_data_info(self):
+    def generate_data_info(self, num: int):
         if len(self.dataframes) < 1:  # make sure there is at least one file loaded
             QMessageBox.information(self, "No Data Loaded",
                                     "At least one dataset is required before data information be viewed.")
             return
 
-        # then open the popup for creating a table
-        self.data_info = DataInformation(self.dataframes, self)
-        self.data_info.setModal(True)
-        self.data_info.finished.connect(self._on_data_info_closed)
-        self.data_info.open()
+        if num == 1:
+            self.data_info = DataInformation(self.dataframes, self)
+            self.data_info.setModal(True)
+            self.data_info.finished.connect(self._on_data_info_closed)
+            self.data_info.open()
+
+        elif num == 2:
+            self.data_info = MissingValueAnalysis(self.dataframes, self)
+            self.data_info.setModal(True)
+            self.data_info.finished.connect(self._on_data_info_closed)
+            self.data_info.open()
 
     def _on_data_info_closed(self, _result):
         self.data_info = None
@@ -240,4 +250,7 @@ class DataViewer(QWidget):
         # add the data into the table
         for row_idx, row in enumerate(rows):
             for col_idx, value in enumerate(row):
-                self.table.setItem(row_idx, col_idx, QTableWidgetItem(str(value)))
+                if pd.isna(value):
+                    self.table.setItem(row_idx, col_idx, QTableWidgetItem("-"))
+                else:
+                    self.table.setItem(row_idx, col_idx, QTableWidgetItem(str(value)))
