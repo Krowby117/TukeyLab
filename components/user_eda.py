@@ -1,4 +1,4 @@
-import plotly.express as px
+
 import pandas as pd
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPalette
@@ -19,11 +19,10 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QFormLayout
 )
-from numpy.matlib import empty
-from components.custom_dialogs import MonoFileGraph, DataInformation, MissingValueAnalysis
+from components.custom_dialogs import SingleFileGraph, DataInformation, MissingValueAnalysis
 
 
-class InteractiveEDA(QMainWindow):
+class ProjectPage(QMainWindow):
     def __init__(self):
         super().__init__()
 
@@ -33,7 +32,7 @@ class InteractiveEDA(QMainWindow):
         self.data_info = None
 
         ## --- Actual table view of the selected file --- ##
-        self.data_viewer = DataViewer()
+        self.data_viewer = DataWindow()
         self.data_viewer.setMinimumWidth(600)
 
         ## --- File loader sidebar --- ##
@@ -219,7 +218,7 @@ class InteractiveEDA(QMainWindow):
             self.current_dataframe = name
             self.data_viewer.set_data(self.dataframes[name])
 
-class DataViewer(QWidget):
+class DataWindow(QWidget):
     def __init__(self):
         super().__init__()
 

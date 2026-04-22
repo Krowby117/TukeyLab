@@ -2,7 +2,7 @@
 import sys
 
 from components.chatbot import ChatbotGUI
-from components.user_eda import InteractiveEDA
+from components.user_eda import ProjectWindow
 from PySide6.QtWidgets import (
     QApplication,
     QMainWindow,
@@ -15,7 +15,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("TukeyLab")
         self.setMinimumSize(1200, 800)
 
-        self.eda = InteractiveEDA()
+        self.eda = ProjectWindow()
 
         self.setCentralWidget(self.eda)
 

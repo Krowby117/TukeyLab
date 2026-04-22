@@ -33,7 +33,7 @@ class MplCanvas(FigureCanvas):
         super().__init__(fig)
         self.setParent(parent)
 
-class MonoFileGraph(QDialog):
+class SingleFileGraph(QDialog):
     default_text: str = " --- "
     table_options = [
         "Histogram",
