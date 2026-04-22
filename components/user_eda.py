@@ -153,7 +153,7 @@ class ProjectPage(QMainWindow):
             return
 
         name = filepath.split("/")[-1]  # grab the filename
-        self.dataframes[name] = data      # add dataset to dictionary
+        self.dataframes[name] = data    # add dataset to dictionary
         self.add_dataset_button(name)   # add the button
 
         # set it as the currently open dataset
@@ -167,7 +167,7 @@ class ProjectPage(QMainWindow):
                 return
 
             # then open the popup for creating a table
-            self.table_maker = MonoFileGraph(self.dataframes, self)
+            self.table_maker = SingleFileGraph(self.dataframes, self)
             self.table_maker.setModal(True)
             self.table_maker.finished.connect(self._on_table_maker_closed)
             self.table_maker.open()

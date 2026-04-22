@@ -1,8 +1,6 @@
 
 import sys
 
-from PySide6.QtGui import QVector2DList
-
 from components.user_eda import ProjectPage
 from components.basic_pages import HomePage
 from PySide6.QtWidgets import (
@@ -34,6 +32,7 @@ class MainWindow(QMainWindow):
 
         self.home = HomePage()
         self.home.open_file.connect(self.open_project)
+        self.home.new_file.connect(self.create_new_proj)
 
         self.pages = QStackedWidget()
         self.pages.addWidget(self.home)
@@ -50,6 +49,9 @@ class MainWindow(QMainWindow):
         self.update_label()
 
     def open_project(self, proj_id: str):
+        # check if the proj_id exists, if so then open that project
+        
+        # extract the project name and input it into the constructor
         proj = ProjectPage()
 
         self.curr_proj = proj
@@ -67,6 +69,18 @@ class MainWindow(QMainWindow):
 
     def update_label(self):
         self.label.setText(str(self.pages.count()))
+
+    def create_new_proj(self, project_name: str):
+        # check if the project name already exists, if it does then update it
+            # add a number or something to it
+
+        # create the main project folder
+
+        # create the project .json file
+
+        # create the project folders (data, graphs, info)
+
+        self.open_project(project_name)
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)

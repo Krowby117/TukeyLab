@@ -1,5 +1,5 @@
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QDialog,
     QComboBox,
@@ -16,14 +16,16 @@ from PySide6.QtWidgets import (
     QTextBrowser,
     QTableWidget,
     QTableWidgetItem,
-    QCheckBox
+    QCheckBox,
+    QLineEdit
 )
 
 import seaborn as sns
 import pandas as pd
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
-from pandas.io.sas.sas_constants import dataset_length
+import hashlib
+import time
 
 
 class MplCanvas(FigureCanvas):
@@ -79,7 +81,8 @@ class SingleFileGraph(QDialog):
 
         self.graphView = MplCanvas(self)
 
-        buttonBox = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttonBox = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
+        buttonBox.addButton(QDialogButtonBox.StandardButton.Cancel)
         buttonBox.accepted.connect(self.accept)
         buttonBox.rejected.connect(self.reject)
 
@@ -356,7 +359,8 @@ class DataInformation(QDialog):
         #self.label = QLabel("General Information")
         self.table = QTableWidget()
 
-        buttonBox = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttonBox = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
+        buttonBox.addButton(QDialogButtonBox.StandardButton.Cancel)
         buttonBox.accepted.connect(self.accept)
         buttonBox.rejected.connect(self.reject)
 
@@ -420,7 +424,7 @@ class MissingValueAnalysis(QDialog):
 
         self.canvas = MplCanvas(self)
 
-        buttons = QDialogButtonBox(QDialogButtonBox.Ok)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
         buttons.accepted.connect(self.accept)
 
         layout = QVBoxLayout()
@@ -445,3 +449,53 @@ class MissingValueAnalysis(QDialog):
             self.canvas.ax.set_title("Missing Values Per Column")
             self.canvas.ax.set_ylabel("Count")
         self.canvas.draw()
+
+class CreateNewProject(QDialog):
+    created = Signal(str)
+
+    def __init__(self):
+        super().__init__()
+        self.resize(500, 300)
+        self.setWindowTitle("Create New Project")
+
+        self.proj_name = QLineEdit()
+        self.proj_name.setPlaceholderText("Project name")
+        self.proj_name.returnPressed.connect(self.emit_name)
+
+        button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
+        button_box.addButton(QDialogButtonBox.StandardButton.Cancel)
+        button_box.accepted.connect(self.emit_name)
+        button_box.rejected.connect(self.reject)
+
+        layout = QVBoxLayout()
+        layout.addWidget(self.proj_name)
+        layout.addWidget(button_box)
+
+        self.setLayout(layout)
+
+    def _is_valid_name(self, name: str) -> bool:
+        # allow only letters, digits, and underscores
+        import re
+        return bool(name) and bool(re.fullmatch(r'[A-Za-z0-9_]+', name))
+
+    def emit_name(self):
+        name = self.proj_name.text().strip()
+        if not self._is_valid_name(name):
+            QMessageBox.warning(
+                self,
+                "Invalid Project Name",
+                "Project name must be non-empty and may only contain letters, digits, and underscores (_). "
+                "No spaces or special characters are allowed."
+            )
+            return
+
+        _id = self.generate_id(name)
+        proj_id = [name, _id]
+
+        self.created.emit(name)
+        self.accept()
+
+    def generate_id(self, name: str):
+        timestamp = str(time.time_ns())
+        check = (timestamp + name).encode()
+        return hashlib.sha256(check).hexdigest()[:6]
