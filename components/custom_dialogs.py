@@ -476,7 +476,7 @@ class CreateNewProject(QDialog):
     def _is_valid_name(self, name: str) -> bool:
         # allow only letters, digits, and underscores
         import re
-        return bool(name) and bool(re.fullmatch(r'[A-Za-z0-9_]+', name))
+        return bool(name) and bool(re.fullmatch(r'[A-Za-z0-9]+', name))
 
     def emit_name(self):
         name = self.proj_name.text().strip()
@@ -484,9 +484,10 @@ class CreateNewProject(QDialog):
             QMessageBox.warning(
                 self,
                 "Invalid Project Name",
-                "Project name must be non-empty and may only contain letters, digits, and underscores (_). "
+                "Project name must be non-empty and may only contain letters, and digits. "
                 "No spaces or special characters are allowed."
             )
+            self.proj_name.clear()
             return
 
         _id = self.generate_id(name)
