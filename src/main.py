@@ -1,5 +1,6 @@
 
 import sys
+import json
 from pathlib import Path
 import hashlib
 from datetime import datetime
@@ -84,7 +85,7 @@ class MainWindow(QMainWindow):
                 self.proj_idschema[proj_id] = path_to_schema
                 self.proj_names.append(name)
 
-                # self.home.add_button(proj_id)
+                self.home.add_button(name, proj_id)
 
     def open_project(self, proj_id: str):
         # if the proj_id does not exist then give an error message
@@ -113,7 +114,7 @@ class MainWindow(QMainWindow):
         valid: bool = False
         while not valid:
             if index == 0: check = name
-            else: check = name + "_" + str(index)
+            else: check = name + str(index)
 
             if check in self.proj_names:
                 index += 1
@@ -130,28 +131,41 @@ class MainWindow(QMainWindow):
         project_path.mkdir(parents=True, exist_ok=True)
 
         # add the project .json file into the main project folder
+        path_to_schema = project_path / f"{proj_dir}.json"
+        proj_schema = {
+            "version": 1,
+            "project_id": proj_id,
+            "project_name": proj_name,
+            "datasets": [],
+            "graphs": [],
+            "info_docs": []
+        }
+        with path_to_schema.open("w", encoding="utf-8") as f:
+            json.dump(proj_schema, f, indent=2)
 
         # create the project folders (data, graphs, info) into the main project folder
         (project_path / "data").mkdir(exist_ok=True)
+        (project_path / "data" / "raw").mkdir(exist_ok=True)
+        (project_path / "data" / "clean").mkdir(exist_ok=True)
         (project_path / "graphs").mkdir(exist_ok=True)
         (project_path / "info").mkdir(exist_ok=True)
 
         # update open project names and ids
-        self.proj_idschema[proj_id] = project_path
+        self.proj_idschema[proj_id] = path_to_schema
         self.proj_names.append(proj_name)
-        # self.home.add_button(proj_id)
 
+        self.home.add_button(proj_name, proj_id)
         self.open_project(proj_id)
 
     def generate_id(self, name: str):
         code = name + datetime.now().isoformat()
         hash_id = hashlib.sha256(code.encode()).hexdigest()
-        return hash_id[9] # grab the first 9 digits as a 9-digit id
+        return hash_id[:9] # grab the first 9 digits as a 9-digit id
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
 
     widget = MainWindow()
     widget.show()
-    print("hello")
+
     app.exec()
