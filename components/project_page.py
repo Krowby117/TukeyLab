@@ -133,14 +133,18 @@ class ProjectPage(QMainWindow):
         if num == 1:
             self.info_dialog = DataInformation(self.dataframes, self)
             self.info_dialog.setModal(True)
-            self.info_dialog.finished.connect(self._on_info_dialog_closed)
+            self.info_dialog.created_doc.connect(self._on_info_dialog_closed)
             self.info_dialog.open()
 
         elif num == 2:
             self.info_dialog = MissingValueAnalysis(self.dataframes, self)
             self.info_dialog.setModal(True)
-            self.info_dialog.finished.connect(self._on_info_dialog_closed)
+            self.info_dialog.finished.connect(self._on_info_dialog_closed_temp)
             self.info_dialog.open()
 
-    def _on_info_dialog_closed(self, _result):
+    def _on_info_dialog_closed(self, doc_name, doc_type, item):
+        self.info_tab.add_info_doc(doc_name, doc_type, item)
+        self.info_dialog = None
+
+    def _on_info_dialog_closed_temp(self):
         self.info_dialog = None

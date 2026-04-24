@@ -3,7 +3,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QVBoxLayout,
 )
-from components.custom_dialogs import CreateNewProject
+from components.custom_dialogs import NewProjectDialog
 from components.custom_widgets import MplCanvas
 
 from PySide6.QtCore import Signal
@@ -31,7 +31,7 @@ class HomePage(QWidget):
         self.open_file.emit(proj_id)
 
     def create_new_project(self):
-        self.create_dialog = CreateNewProject()
+        self.create_dialog = NewProjectDialog()
         self.create_dialog.setModal(True)
         self.create_dialog.created.connect(self.create_project)
         self.create_dialog.open()

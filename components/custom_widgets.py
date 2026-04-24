@@ -16,7 +16,9 @@ from PySide6.QtWidgets import (
     QSplitter,
     QSizePolicy,
     QMessageBox,
-    QFormLayout
+    QFormLayout,
+    QTextBrowser,
+    QStackedWidget
 )
 
 import pandas as pd
@@ -40,7 +42,7 @@ class DataWindow(QWidget):
 
         self.table = QTableWidget()
 
-        ## --- File loader sidebar --- ##
+        ## --- File Loader Sidebar --- ##
         self.upload_button = QPushButton("Open File")
         self.upload_button.clicked.connect(self.open_file)
 
@@ -65,15 +67,6 @@ class DataWindow(QWidget):
         self.left_widget.setLayout(self.left_layout)
         self.left_widget.setMinimumWidth(175)
         self.left_widget.setMaximumWidth(250)
-
-        # get the table's base color
-        table_bg = self.table.palette().color(QPalette.ColorRole.Base)
-
-        # apply it to the file container
-        self.file_container.setAutoFillBackground(True)
-        palette = self.file_container.palette()
-        palette.setColor(QPalette.ColorRole.Window, table_bg)
-        self.file_container.setPalette(palette)
 
         self.layout = QHBoxLayout()
         self.layout.addWidget(self.left_widget)
@@ -133,8 +126,7 @@ class DataWindow(QWidget):
         self.add_dataset_button(name)   # add the button
 
         # set it as the currently open dataset
-        self.set_data(data)
-        self.curr_file = name
+        self.switch_dataset(name)
 
         # emit the opened file and dataframe
         self.file_opened.emit(name, data)
@@ -160,10 +152,107 @@ class GraphWindow(QWidget):
     def add_graph(self, metadata: str):
         pass
 
-
 class InfoWindow(QWidget):
+    documents = {}
+    curr_doc = ""
+
     def __init__(self):
         super().__init__()
 
-    def add_doc(self, metadata: str):
-        pass
+        ## --- Display Item Stack --- ##
+        self.text = QTextBrowser()
+        self.table = QTableWidget()
+
+        self.display_stack = QStackedWidget()
+        self.display_stack.addWidget(self.text)
+        self.display_stack.addWidget(self.table)
+
+        ## --- Document Buttons Sidebar --- ##
+        self.btn_scroller = QScrollArea()
+        self.btn_scroller.setWidgetResizable(True)
+        self.btn_scroller.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+
+        self.btn_container = QWidget()
+        self.flayout = QVBoxLayout(self.btn_container)
+        self.btn_scroller.setWidget(self.btn_container)
+        self.flayout.addStretch()
+
+        self.left_layout = QVBoxLayout()
+        self.left_layout.addWidget(self.btn_scroller)
+
+        self.left_widget = QWidget()
+        self.left_widget.setLayout(self.left_layout)
+        self.left_widget.setMinimumWidth(175)
+        self.left_widget.setMaximumWidth(250)
+
+        self.layout = QHBoxLayout()
+        self.layout.addWidget(self.left_widget)
+        self.layout.addWidget(self.display_stack)
+
+        self.setLayout(self.layout)
+
+    def add_info_doc(self, name: str, doc_type: str, item: object):
+        if name in self.documents.keys():
+            return
+
+        self.documents[name] = [doc_type, item]
+        self.add_document_button(name)
+        self.switch_document(name)
+
+    def set_text(self, text):
+        if not text: return
+
+        # set the text as the active widget in the stack
+        self.display_stack.setCurrentWidget(self.text)
+
+        self.text.clear()
+        self.text.setText(text)
+
+    def set_data(self, data):
+        if data is None or data.empty:
+            return
+
+        # set the table as the active widget in the stack
+        self.display_stack.setCurrentWidget(self.table)
+
+        # clear the existing table data
+        self.table.clear()
+        self.table.setRowCount(0)
+        self.table.setColumnCount(0)
+
+        # grab the headers
+        headers = list(data.columns)
+        self.table.setColumnCount(len(headers))
+        self.table.setHorizontalHeaderLabels(headers)
+
+        rows = data.values
+        self.table.setRowCount(len(rows))
+
+        # add the data into the table
+        for row_idx, row in enumerate(rows):
+            for col_idx, value in enumerate(row):
+                if pd.isna(value):
+                    self.table.setItem(row_idx, col_idx, QTableWidgetItem("-"))
+                else:
+                    self.table.setItem(row_idx, col_idx, QTableWidgetItem(str(value)))
+
+    def add_document_button(self, name):
+        btn = QToolButton()
+        btn.setText(name)
+        btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        btn.clicked.connect(lambda: self.switch_document(name))
+
+        # Insert before the stretch widget
+        self.flayout.insertWidget(self.flayout.count() - 1, btn)
+
+    def switch_document(self, name):
+        if not name in self.documents.keys() or name == self.curr_doc:
+            return
+
+        doc_type = self.documents[name][0]
+        item = self.documents[name][1]
+
+        if doc_type == "text": self.set_text(item)
+        elif doc_type == "table": self.set_data(item)
+
+        self.curr_doc = name

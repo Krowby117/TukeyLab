@@ -29,6 +29,7 @@ from components.custom_widgets import MplCanvas
 
 class SingleFileGraph(QDialog):
     default_text: str = " --- "
+    graphType: str = default_text
     table_options = [
         "Histogram",
         "Scatter Plot",
@@ -39,8 +40,6 @@ class SingleFileGraph(QDialog):
         #"Bar Chart",
         #"Pie Chart",
     ]
-
-    graphType: str   = default_text
 
     def __init__(self, dfs, parent=None):
         super().__init__(parent)
@@ -335,6 +334,9 @@ class SingleFileGraph(QDialog):
 class DataInformation(QDialog):
     default_text = "---"
     activeFile = ""
+    info = None
+
+    created_doc = Signal(str, str, object)
     def __init__(self, dfs, parent=None):
         super().__init__(parent)
         self.resize(900, 700)
@@ -348,25 +350,32 @@ class DataInformation(QDialog):
         self.fileCombo.addItems(list(self.dataframes.keys()))
         self.fileCombo.currentTextChanged.connect(self.update_table)
 
-        #self.label = QLabel("General Information")
         self.table = QTableWidget()
 
         buttonBox = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
         buttonBox.addButton(QDialogButtonBox.StandardButton.Cancel)
-        buttonBox.accepted.connect(self.accept)
+        buttonBox.accepted.connect(self.create_document)
         buttonBox.rejected.connect(self.reject)
 
         layout = QVBoxLayout()
-        #layout.addWidget(self.label)
         layout.addWidget(self.fileCombo)
         layout.addWidget(self.table)
         layout.addWidget(buttonBox)
 
         self.setLayout(layout)
 
+    def create_document(self):
+        if self.info is None or self.info.empty:
+            return
+
+        doc_name = self.activeFile + " General Info"
+        self.created_doc.emit(doc_name, "table", self.info)
+        self.accept()
+
     def update_table(self, file: str):
         if file == self.activeFile: return
 
+        self.activeFile = file
         self.table.clear()
 
         if file == self.default_text: return
@@ -383,17 +392,17 @@ class DataInformation(QDialog):
         desc = df.describe(include='all').transpose()
 
         # Combine everything
-        info = summary.join(desc)
+        self.info = summary.join(desc)
 
-        self.table.setRowCount(info.shape[0])
-        self.table.setColumnCount(info.shape[1])
+        self.table.setRowCount(self.info.shape[0])
+        self.table.setColumnCount(self.info.shape[1])
 
         # Set column headers
-        self.table.setHorizontalHeaderLabels(info.columns.astype(str))
+        self.table.setHorizontalHeaderLabels(self.info.columns.astype(str))
 
-        for row in range(info.shape[0]):
-            for col in range(info.shape[1]):
-                value = info.iat[row, col]
+        for row in range(self.info.shape[0]):
+            for col in range(self.info.shape[1]):
+                value = self.info.iat[row, col]
 
                 # Handle NaN / None cleanly
                 if pd.isna(value):
@@ -417,7 +426,7 @@ class MissingValueAnalysis(QDialog):
         self.canvas = MplCanvas(self)
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
-        buttons.accepted.connect(self.accept)
+        buttons.accepted.connect(self.accept())
 
         layout = QVBoxLayout()
         layout.addWidget(self.fileCombo)
@@ -440,9 +449,10 @@ class MissingValueAnalysis(QDialog):
             missing.plot(kind='bar', ax=self.canvas.ax, color='salmon')
             self.canvas.ax.set_title("Missing Values Per Column")
             self.canvas.ax.set_ylabel("Count")
+
         self.canvas.draw()
 
-class CreateNewProject(QDialog):
+class NewProjectDialog(QDialog):
     created = Signal(str)
 
     def __init__(self):
