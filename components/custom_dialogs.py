@@ -41,6 +41,7 @@ class SingleFileGraph(QDialog):
         #"Pie Chart",
     ]
 
+    created_graph = Signal(dict)
     def __init__(self, dfs, parent=None):
         super().__init__(parent)
         self.resize(900, 700)
@@ -74,7 +75,7 @@ class SingleFileGraph(QDialog):
 
         buttonBox = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
         buttonBox.addButton(QDialogButtonBox.StandardButton.Cancel)
-        buttonBox.accepted.connect(self.accept)
+        buttonBox.accepted.connect(self.create_graph)
         buttonBox.rejected.connect(self.reject)
 
         layout = QFormLayout()
@@ -85,6 +86,59 @@ class SingleFileGraph(QDialog):
         layout.addRow(buttonBox)
 
         self.setLayout(layout)
+
+    def create_graph(self):
+        if not self._combo_has_valid_selection(self.fileCombo):
+            return
+
+        # grab the dataset
+        dataset = self.fileCombo.currentText()
+        df = self.dataframes[dataset]
+
+        # define the graph name and parameters based on the selected graph type
+        if self.graphType == "Histogram" and self._combo_has_valid_selection(self.hist_feature):
+            feat = self.hist_feature.currentText()
+            bins = self.bins.value()
+            param = {"feature": feat, "bins": bins}
+            name = f"{feat} Histogram"
+
+        elif self.graphType == "Scatter Plot" and self._combo_has_valid_selection(self.scat_feature_x) and self._combo_has_valid_selection(self.scat_feature_y):
+            x = self.scat_feature_x.currentText()
+            y = self.scat_feature_y.currentText()
+            param = {"x": x, "y": y}
+            name = f"{x} v {y} Scatter Plot"
+
+        elif self.graphType == "Box Plot" and self._combo_has_valid_selection(self.box_feature):
+            param = self.box_feature.currentText()
+            name = f"{param} Box Plot"
+
+        elif self.graphType == "Heatmap" and self._combo_has_valid_selection(self.heatmap_feature_x) and self._combo_has_valid_selection(self.heatmap_feature_y):
+            x = self.heatmap_feature_x.currentText()
+            y = self.heatmap_feature_y.currentText()
+            param = {"x": x, "y": y}
+            name = f"{x} v {y} Heatmap"
+
+        elif self.graphType == "KDE Plot" and self._combo_has_valid_selection(self.kde_feature):
+            param = self.kde_feature.currentText()
+            name = f"{param} KDE Plot"
+
+        elif self.graphType == "Correlation Matrix":
+            param = {}
+            name = f"{dataset} Correlation Matrix"
+
+        else: return
+
+        # define the graph metadata to emit
+        metadata = {
+            "name": name,
+            "type": self.graphType,
+            "data": df,
+            "params": param,
+        }
+
+        # emit the metadata
+        self.created_graph.emit(metadata)
+        self.accept()
 
     def update_inputs(self, graph_type: str):
         if graph_type == self.default_text:
@@ -426,7 +480,7 @@ class MissingValueAnalysis(QDialog):
         self.canvas = MplCanvas(self)
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
-        buttons.accepted.connect(self.accept())
+        buttons.accepted.connect(self.accept)
 
         layout = QVBoxLayout()
         layout.addWidget(self.fileCombo)

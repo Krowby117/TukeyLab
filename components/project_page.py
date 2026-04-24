@@ -111,7 +111,7 @@ class ProjectPage(QMainWindow):
             # then open the popup for creating a table
             self.table_dialog = SingleFileGraph(self.dataframes, self)
             self.table_dialog.setModal(True)
-            self.table_dialog.finished.connect(self._on_table_dialog_closed)
+            self.table_dialog.created_graph.connect(self._on_table_dialog_closed)
             self.table_dialog.open()
 
         if num == 2:  # if making a multi-file graph
@@ -121,7 +121,8 @@ class ProjectPage(QMainWindow):
 
             QMessageBox.information(self, "Work In Progress","No functionality yet.")
 
-    def _on_table_dialog_closed(self, _result):
+    def _on_table_dialog_closed(self, metadata):
+        self.graph_tab.add_graph(metadata)
         self.table_dialog = None
 
     def generate_data_info(self, num: int):
