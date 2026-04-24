@@ -4,6 +4,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 from components.custom_dialogs import CreateNewProject
+from components.custom_widgets import MplCanvas
 
 from PySide6.QtCore import Signal
 from pathlib import Path

@@ -5,7 +5,7 @@ from pathlib import Path
 import hashlib
 from datetime import datetime
 
-from components.user_eda import ProjectPage
+from components.project_page import ProjectPage
 from components.basic_pages import HomePage
 from PySide6.QtWidgets import (
     QApplication,

@@ -17,10 +17,12 @@ from PySide6.QtWidgets import (
     QSplitter,
     QSizePolicy,
     QMessageBox,
-    QFormLayout
+    QFormLayout,
+    QTabWidget,
+    QLabel
 )
 from components.custom_dialogs import SingleFileGraph, DataInformation, MissingValueAnalysis
-
+from components.custom_widgets import DataWindow, GraphWindow, InfoWindow
 
 class ProjectPage(QMainWindow):
     def __init__(self):
@@ -32,8 +34,15 @@ class ProjectPage(QMainWindow):
         self.data_info = None
 
         ## --- Actual table view of the selected file --- ##
-        self.data_viewer = DataWindow()
-        self.data_viewer.setMinimumWidth(600)
+        self.data_tab = DataWindow()
+        self.graph_tab = GraphWindow()
+        self.info_tab = InfoWindow()
+
+        self.tabs = QTabWidget()
+        self.tabs.addTab(self.data_tab, "Data Tables")
+        self.tabs.addTab(self.graph_tab, "Graphs")
+        self.tabs.addTab(self.info_tab, "Info Docs")
+
 
         ## --- File loader sidebar --- ##
         self.upload_button = QPushButton("Open File")
@@ -93,12 +102,12 @@ class ProjectPage(QMainWindow):
         self.glayout.addStretch()
 
         self.right_layout = QVBoxLayout()
-        layout = QFormLayout()
-        layout.addRow("Create Single-File Graph: ", single_file_graph)
-        layout.addRow("Create Multi-File Graph: ", multi_file_graph)
-        layout.addRow("See Data Information: ", get_data_info)
-        layout.addRow("Missing Data Analysis: ", missing_data_info)
-        self.right_layout.addLayout(layout)
+        generator_buttons = QFormLayout()
+        generator_buttons.addRow("Create Single-File Graph: ", single_file_graph)
+        generator_buttons.addRow("Create Multi-File Graph: ", multi_file_graph)
+        generator_buttons.addRow("See Data Information: ", get_data_info)
+        generator_buttons.addRow("Missing Data Analysis: ", missing_data_info)
+        self.right_layout.addLayout(generator_buttons)
         self.right_layout.addWidget(self.graph_scroller)
 
         self.right_widget = QWidget()
@@ -124,7 +133,7 @@ class ProjectPage(QMainWindow):
         ## ---- Main widget / layout container ---- ##
         self.main_container = QSplitter(Qt.Orientation.Horizontal)
         self.main_container.addWidget(self.left_widget)
-        self.main_container.addWidget(self.data_viewer)
+        self.main_container.addWidget(self.tabs)
         self.main_container.addWidget(self.right_widget)
         self.main_container.setSizes([175, 600, 175])
 
@@ -217,39 +226,3 @@ class ProjectPage(QMainWindow):
         if name in self.dataframes and name != self.current_dataframe:
             self.current_dataframe = name
             self.data_viewer.set_data(self.dataframes[name])
-
-class DataWindow(QWidget):
-    def __init__(self):
-        super().__init__()
-
-        self.table = QTableWidget()
-
-        self.layout = QVBoxLayout()
-        self.layout.addWidget(self.table)
-
-        self.setLayout(self.layout)
-
-    def set_data(self, data):
-        if data is None or data.empty:
-            return
-
-        # clear the existing table data
-        self.table.clear()
-        self.table.setRowCount(0)
-        self.table.setColumnCount(0)
-
-        # grab the headers
-        headers = list(data.columns)
-        self.table.setColumnCount(len(headers))
-        self.table.setHorizontalHeaderLabels(headers)
-
-        rows = data.values
-        self.table.setRowCount(len(rows))
-
-        # add the data into the table
-        for row_idx, row in enumerate(rows):
-            for col_idx, value in enumerate(row):
-                if pd.isna(value):
-                    self.table.setItem(row_idx, col_idx, QTableWidgetItem("-"))
-                else:
-                    self.table.setItem(row_idx, col_idx, QTableWidgetItem(str(value)))
