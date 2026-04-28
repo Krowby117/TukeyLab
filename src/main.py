@@ -1,5 +1,6 @@
 
 import sys
+import os
 import json
 from pathlib import Path
 import hashlib
@@ -16,14 +17,20 @@ from PySide6.QtWidgets import (
     QStackedWidget,
     QPushButton,
     QHBoxLayout,
-    QMessageBox
+    QMessageBox,
+    QToolBar,
+    QStyle
 )
+from PySide6.QtGui import QAction, QIcon
+from PySide6.QtCore import Qt
 
 class MainWindow(QMainWindow):
-    projects_dir = Path(__file__).resolve().parent.parent / "projects"
+    BASE_DIR = Path(__file__).resolve().parent.parent
+    ICONS_PATH = BASE_DIR / "assets" / "icons"
+    PROJECTS_DIR = BASE_DIR / "projects"
 
     # dictionary mapping project id to project .json filepath
-    proj_idschema: dict[str, Path] = {}
+    proj_id_schema: dict[str, Path] = {}
     proj_names: list[str] = []
     curr_proj = None
 
@@ -32,15 +39,6 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("TukeyLab")
         self.setMinimumSize(1200, 800)
 
-        self.home_btn = QPushButton("Home")
-        self.home_btn.clicked.connect(self.open_homepage)
-
-        self.label = QLabel("")
-
-        self.menu_bar = QHBoxLayout()
-        self.menu_bar.addWidget(self.home_btn)
-        self.menu_bar.addWidget(self.label)
-
         self.home = HomePage()
         self.home.open_file.connect(self.open_project)
         self.home.new_file.connect(self.create_new_proj)
@@ -48,48 +46,65 @@ class MainWindow(QMainWindow):
         self.pages = QStackedWidget()
         self.pages.addWidget(self.home)
 
-        layout = QVBoxLayout()
-        layout.addLayout(self.menu_bar)
-        layout.addWidget(self.pages)
+        self.setCentralWidget(self.pages)
 
-        container = QWidget()
-        container.setLayout(layout)
-
-        self.setCentralWidget(container)
-
-        self.update_label()
+        self.create_toolbar()
         self.load_init_projects()
+
+    def create_toolbar(self):
+        toolbar = QToolBar("Main Toolbar")
+        toolbar.setMovable(False)
+        #toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self.addToolBar(toolbar)
+
+        # Home button
+        home_icon = QIcon(str(self.ICONS_PATH / "flask-conical.svg"))
+        home_btn = QAction(home_icon, "TukeyLab", self)
+        home_btn.triggered.connect(self.open_homepage)
+        toolbar.addAction(home_btn)
+
+        # # New File Action
+        # new_act = QAction("New", self)
+        # new_act.triggered.connect(lambda: self.editor.clear())
+        # toolbar.addAction(new_act)
+        #
+        # # Open File Action
+        # open_act = QAction("Open", self)
+        # open_act.triggered.connect(self.open_file)
+        # toolbar.addAction(open_act)
+        #
+        # # Save File Action
+        # save_act = QAction("Save", self)
+        # save_act.triggered.connect(self.save_file)
+        # toolbar.addAction(save_act)
 
     def open_homepage(self):
         if self.curr_proj:
+            self.curr_proj.save_schema()
             self.pages.removeWidget(self.curr_proj)
             self.curr_proj = None
 
         self.pages.setCurrentWidget(self.home)
-        self.update_label()
-
-    def update_label(self):
-        self.label.setText(str(self.pages.count()))
 
     def load_init_projects(self):
-        self.proj_idschema.clear()
+        self.proj_id_schema.clear()
         self.proj_names.clear()
 
         # iterate through the projects folder
-        for folder in self.projects_dir.iterdir():
+        for folder in self.PROJECTS_DIR.iterdir():
             if folder.is_dir():
                 # Split the folder name into two parts
                 name, proj_id = folder.name.rsplit("_", 1)
-                path_to_schema = self.projects_dir / folder.name / f"{folder.name}.json"
+                path_to_schema = self.PROJECTS_DIR / folder.name / f"{folder.name}.json"
 
-                self.proj_idschema[proj_id] = path_to_schema
+                self.proj_id_schema[proj_id] = path_to_schema
                 self.proj_names.append(name)
 
-                self.home.add_button(name, proj_id)
+                self.home.add_proj_button(name, proj_id)
 
     def open_project(self, proj_id: str):
         # if the proj_id does not exist then give an error message
-        if not proj_id in self.proj_idschema.keys():
+        if not proj_id in self.proj_id_schema.keys():
             QMessageBox.warning(
                 self,
                 "Project Error",
@@ -98,13 +113,12 @@ class MainWindow(QMainWindow):
             return
 
         # extract the project schema and input it into the constructor
-        schema = self.proj_idschema[proj_id]
-        proj = ProjectPage()
+        schema_path = self.proj_id_schema[proj_id]
+        proj = ProjectPage(schema_path)
 
         self.curr_proj = proj
         self.pages.addWidget(proj)
         self.pages.setCurrentWidget(proj)
-        self.update_label()
 
     def create_new_proj(self, name: str):
         # this ensures that no project shares a name
@@ -127,13 +141,12 @@ class MainWindow(QMainWindow):
         proj_dir = proj_name + "_" + proj_id
 
         # create the main project folder
-        project_path = self.projects_dir / proj_dir
+        project_path = self.PROJECTS_DIR / proj_dir
         project_path.mkdir(parents=True, exist_ok=True)
 
         # add the project .json file into the main project folder
         path_to_schema = project_path / f"{proj_dir}.json"
         proj_schema = {
-            "version": 1,
             "project_id": proj_id,
             "project_name": proj_name,
             "datasets": [],
@@ -151,7 +164,7 @@ class MainWindow(QMainWindow):
         (project_path / "info").mkdir(exist_ok=True)
 
         # update open project names and ids
-        self.proj_idschema[proj_id] = path_to_schema
+        self.proj_id_schema[proj_id] = path_to_schema
         self.proj_names.append(proj_name)
 
         self.home.add_button(proj_name, proj_id)

@@ -1,7 +1,6 @@
 
-import pandas as pd
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QPalette
+from PySide6.QtGui import QPalette, QIcon
 from PySide6.QtWidgets import (
     QWidget,
     QMainWindow,
@@ -21,16 +20,19 @@ from PySide6.QtWidgets import (
     QTabWidget,
     QLabel
 )
+
+from pathlib import Path
+import json
+
 from components.custom_dialogs import SingleFileGraph, DataInformation, MissingValueAnalysis
 from components.custom_widgets import DataWindow, GraphWindow, InfoWindow
 
 class ProjectPage(QMainWindow):
     dataframes = {}
-    def __init__(self):
+    current_dataframe = ""
+    def __init__(self, schema_path: Path):
         super().__init__()
 
-        self.dataframes = {}
-        self.current_dataframe = ""
         self.table_dialog = None
         self.info_dialog = None
 
@@ -48,13 +50,14 @@ class ProjectPage(QMainWindow):
 
         ## --- Plotly visualizer sidebar --- ##
         single_file_graph = QPushButton("+")
-        single_file_graph.clicked.connect(lambda: self.generate_table(1))
-
-        multi_file_graph = QPushButton("+")
-        multi_file_graph.clicked.connect(lambda: self.generate_table(2))
+        single_file_graph.clicked.connect(self.generate_table)
+        icon = QIcon(str(Path(__file__).resolve().parent.parent / "assets" / "icons" / "chart-area.svg"))
+        single_file_graph.setIcon(icon)
 
         get_data_info = QPushButton("+")
         get_data_info.clicked.connect(lambda: self.generate_data_info(1))
+        icon = QIcon(str(Path(__file__).resolve().parent.parent / "assets" / "icons" / "file-text.svg"))
+        get_data_info.setIcon(icon)
 
         missing_data_info = QPushButton("+")
         missing_data_info.clicked.connect(lambda: self.generate_data_info(2))
@@ -71,7 +74,6 @@ class ProjectPage(QMainWindow):
         self.right_layout = QVBoxLayout()
         generator_buttons = QFormLayout()
         generator_buttons.addRow("Create Single-File Graph: ", single_file_graph)
-        generator_buttons.addRow("Create Multi-File Graph: ", multi_file_graph)
         generator_buttons.addRow("See Data Information: ", get_data_info)
         generator_buttons.addRow("Missing Data Analysis: ", missing_data_info)
         self.right_layout.addLayout(generator_buttons)
@@ -99,27 +101,39 @@ class ProjectPage(QMainWindow):
 
         self.setCentralWidget(self.main_container)
 
+    def load_schema(self, schema_path: Path):
+        # grab and unpack the schema
+        with schema_path.open("r", encoding="utf-8") as f:
+            schema = json.load(f)
+
+        # grab the individual components of the schema
+        name = schema["project_name"]
+        datasets = schema["datasets"]
+        graphs = schema["graphs"]
+        docs = schema["info_docs"]
+
+        # process each component as necessary
+        for file in datasets:
+            self.data_tab.load_file(file)
+
+        # need to figure out how each component is going to be saved in the folders + schema
+
+    def save_schema(self):
+        
+
     def add_dataframe(self, name, df):
         self.dataframes[name] = df
 
-    def generate_table(self, num: int):
-        if num == 1:    # if making a single-file graph
-            if len(self.dataframes) < 1:    # make sure there is at least one file loaded
-                QMessageBox.information(self, "No Data Loaded","At least one dataset is required before a table can be created.")
-                return
+    def generate_table(self):
+        if len(self.dataframes) < 1:    # make sure there is at least one file loaded
+            QMessageBox.information(self, "No Data Loaded","At least one dataset is required before a table can be created.")
+            return
 
-            # then open the popup for creating a table
-            self.table_dialog = SingleFileGraph(self.dataframes, self)
-            self.table_dialog.setModal(True)
-            self.table_dialog.created_graph.connect(self._on_table_dialog_closed)
-            self.table_dialog.open()
-
-        if num == 2:  # if making a multi-file graph
-            if len(self.dataframes) < 2:  # make sure there are at least two files loaded
-                QMessageBox.information(self, "Not Enough Data Loaded","At least two datasets are required before a table can be created.")
-                return
-
-            QMessageBox.information(self, "Work In Progress","No functionality yet.")
+        # then open the popup for creating a table
+        self.table_dialog = SingleFileGraph(self.dataframes, self)
+        self.table_dialog.setModal(True)
+        self.table_dialog.created_graph.connect(self._on_table_dialog_closed)
+        self.table_dialog.open()
 
     def _on_table_dialog_closed(self, metadata):
         self.graph_tab.add_graph(metadata)

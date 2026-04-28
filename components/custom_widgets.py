@@ -1,6 +1,7 @@
+from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QPalette
+from PySide6.QtGui import QPalette, QIcon
 from PySide6.QtWidgets import (
     QWidget,
     QMainWindow,
@@ -47,8 +48,7 @@ class DataWindow(QWidget):
         self.upload_button = QPushButton("Open File")
         self.upload_button.clicked.connect(self.open_file)
 
-        pixmap = QStyle.StandardPixmap.SP_DialogOpenButton
-        icon = self.style().standardIcon(pixmap)
+        icon = QIcon(str(Path(__file__).resolve().parent.parent / "assets" / "icons" / "file-plus-corner.svg"))
         self.upload_button.setIcon(icon)
 
         self.file_scroller = QScrollArea()
@@ -105,6 +105,9 @@ class DataWindow(QWidget):
         filters = "Data Files (*.csv *.json *.xml *.xlsx);;CSV Files (*.csv);;JSON Files (*.json);;XML Files (*.xml);;Excel Files (*.xlsx)"
         filepath, _ = file_dialog.getOpenFileName(self, "Open CSV File", "", filters)
 
+        self.load_file(filepath)
+
+    def load_file(self, filepath: str):
         # load the file path based on the type
         if filepath.endswith(".csv"):
             data = pd.read_csv(filepath)

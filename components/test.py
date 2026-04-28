@@ -1,5 +1,6 @@
 import hashlib
 from datetime import datetime
+from pathlib import Path
 
 # 1. Grab current time
 # Use isoformat() for a standardized string representation
@@ -29,3 +30,4 @@ while not valid:
         valid = True
 
 print(name)
+print(Path(__file__).resolve().parent)
