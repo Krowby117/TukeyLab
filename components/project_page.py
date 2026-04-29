@@ -43,7 +43,7 @@ class ProjectPage(QMainWindow):
         self.info_dialog = None
 
         ## --- Tab window of different view modes --- ##
-        self.data_tab = DataWindow()
+        self.data_tab = DataWindow(self.PROJECT_DIR)
         self.data_tab.file_selected.connect(self.import_datafile)
         self.data_tab.new_dataframe.connect(self.add_dataframe)
 
@@ -115,12 +115,14 @@ class ProjectPage(QMainWindow):
 
         self.setCentralWidget(self.main_container)
 
+        # load the project schema
+        self.load_schema()
+
     def load_schema(self):
         # grab the schema
         schema = self.grab_schema()
 
         # grab the individual components of the schema
-        name = schema["project_name"]
         datasets = schema["datasets"]
         graphs = schema["graphs"]
         docs = schema["info_docs"]
@@ -129,14 +131,20 @@ class ProjectPage(QMainWindow):
         for file in datasets:
             self.data_tab.load_file(file)
 
-        # need to figure out how each component is going to be saved in the folders + schema
+        for file in graphs:
+            src_path = self.PROJECT_DIR / "graphs" / file
+            with src_path.open("r", encoding="utf-8") as f:
+                metadata = json.load(f)
+            self.graph_tab.load_graph(metadata)
+
+        print("Schema loaded!")
 
     def save_schema(self):
         # create a blank schema and load in basic information
         proj_name, proj_id = self.FULL_ID.rsplit("_", 1)
         datasets = []
         graphs = []
-        info_docs = []
+        docs = []
 
         # iterate through the projects subfolders and load in subfolder info
         for subfolder in self.PROJECT_DIR.iterdir():
@@ -150,7 +158,7 @@ class ProjectPage(QMainWindow):
 
                         if subfolder.name == "data": datasets.append(item.name)
                         if subfolder.name == "graphs": graphs.append(item.name)
-                        if subfolder.name == "info": info_docs.append(item.name)
+                        if subfolder.name == "info": docs.append(item.name)
 
         # load all information into a fresh schema
         proj_schema = {
@@ -158,7 +166,7 @@ class ProjectPage(QMainWindow):
             "project_name": proj_name,
             "datasets": datasets,
             "graphs": graphs,
-            "info_docs": info_docs
+            "info_docs": docs
         }
 
         # write the JSON file to the project folder

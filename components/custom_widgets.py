@@ -55,8 +55,10 @@ class DataWindow(QWidget):
     dataframes = {}
     curr_file = ""
 
-    def __init__(self):
+    def __init__(self, project_path: Path):
         super().__init__()
+
+        self.PROJECT_DIR = project_path
 
         self.table = QTableWidget()
 
@@ -111,7 +113,8 @@ class DataWindow(QWidget):
 
     def load_file(self, filepath: str):
         # create a dataframe from the file
-        data = make_dataframe(filepath)
+        src_path = str(self.PROJECT_DIR / "data" / filepath)
+        data = make_dataframe(src_path)
 
         # if the data doesn't exist, or it is empty,
         # then don't bother loading it into the viewer
