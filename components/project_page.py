@@ -149,13 +149,9 @@ class ProjectPage(QMainWindow):
         # iterate through the projects subfolders and load in subfolder info
         for subfolder in self.PROJECT_DIR.iterdir():
             if subfolder.is_dir():
-                print(f"\nFolder: {subfolder.name}")
-
                 # iterate through the items in each subdirectory
                 for item in subfolder.iterdir():
                     if item.is_file():
-                        print(f"File: {item.name}")
-
                         if subfolder.name == "data": datasets.append(item.name)
                         if subfolder.name == "graphs": graphs.append(item.name)
                         if subfolder.name == "info": docs.append(item.name)

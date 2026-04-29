@@ -1,12 +1,12 @@
 from PySide6.QtWidgets import (
     QWidget,
     QPushButton,
-    QVBoxLayout,
+    QToolButton,
+    QGridLayout
 )
 from components.custom_dialogs import NewProjectDialog
-from components.custom_widgets import MplCanvas
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Signal, Qt, QSize
 from PySide6.QtGui import QIcon
 from pathlib import Path
 
@@ -19,13 +19,21 @@ class HomePage(QWidget):
     def __init__(self):
         super().__init__()
 
-        self.new_proj_btn = QPushButton("Create New Project")
+        self.total_btns = 0
+        self.num_columns = 6
+
+        self.new_proj_btn = QToolButton()
+        self.new_proj_btn.setText("New Project")
+        self.new_proj_btn.setFixedSize(100, 100)
         self.new_proj_btn.clicked.connect(self.create_new_project)
         icon = QIcon(str(Path(__file__).resolve().parent.parent / "assets" / "icons" / "square-plus.svg"))
         self.new_proj_btn.setIcon(icon)
+        self.new_proj_btn.setIconSize(QSize(80, 80))
 
-        self.layout = QVBoxLayout()
+        self.layout = QGridLayout(self)
+        self.layout.setAlignment(Qt.AlignTop | Qt.AlignLeft)
         self.layout.addWidget(self.new_proj_btn)
+        self.total_btns += 1
 
         self.setLayout(self.layout)
 
@@ -42,10 +50,19 @@ class HomePage(QWidget):
         self.new_file.emit(name)
 
     def add_proj_button(self, proj_name: str, proj_id: str):
-        proj_btn = QPushButton(proj_name)
+        proj_btn = QToolButton()
+        proj_btn.setText(proj_name)
+        proj_btn.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
         proj_btn.clicked.connect(lambda: self.open_project(proj_id))
-
+        proj_btn.setFixedSize(100, 100)
         icon = QIcon(str(Path(__file__).resolve().parent.parent / "assets" / "icons" / "folder-open.svg"))
         proj_btn.setIcon(icon)
+        proj_btn.setIconSize(QSize(80, 80))
 
-        self.layout.addWidget(proj_btn)
+        # Calculate position based on current list length
+        current_index = self.total_btns
+        row = current_index // self.num_columns
+        col = current_index % self.num_columns
+
+        self.layout.addWidget(proj_btn, row, col)
+        self.total_btns += 1

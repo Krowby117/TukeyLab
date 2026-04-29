@@ -19,7 +19,8 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QFormLayout,
     QTextBrowser,
-    QStackedWidget
+    QStackedWidget,
+    QGridLayout
 )
 
 import pandas as pd
