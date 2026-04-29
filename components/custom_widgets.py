@@ -27,6 +27,20 @@ import seaborn as sns
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 
+
+def make_dataframe(filepath: str):
+    # load the file path based on the type
+    if filepath.endswith(".csv"):
+        return pd.read_csv(filepath)
+    elif filepath.endswith(".json"):
+        return pd.read_json(filepath)
+    elif filepath.endswith(".xml"):
+        return pd.read_xml(filepath)
+    elif filepath.endswith(".xlsx"):
+        return pd.read_excel(filepath)
+    else:
+        raise ValueError("Unsupported file type")
+
 class MplCanvas(FigureCanvas):
     def __init__(self, parent=None):
         fig = Figure()
@@ -35,7 +49,9 @@ class MplCanvas(FigureCanvas):
         self.setParent(parent)
 
 class DataWindow(QWidget):
-    file_opened = Signal(str, object)
+    file_selected = Signal(str)
+    new_dataframe = Signal(str, object)
+
     dataframes = {}
     curr_file = ""
 
@@ -45,12 +61,6 @@ class DataWindow(QWidget):
         self.table = QTableWidget()
 
         ## --- File Loader Sidebar --- ##
-        self.upload_button = QPushButton("Open File")
-        self.upload_button.clicked.connect(self.open_file)
-
-        icon = QIcon(str(Path(__file__).resolve().parent.parent / "assets" / "icons" / "file-plus-corner.svg"))
-        self.upload_button.setIcon(icon)
-
         self.file_scroller = QScrollArea()
         self.file_scroller.setWidgetResizable(True)
         self.file_scroller.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -61,7 +71,6 @@ class DataWindow(QWidget):
         self.flayout.addStretch()
 
         self.left_layout = QVBoxLayout()
-        self.left_layout.addWidget(self.upload_button)
         self.left_layout.addWidget(self.file_scroller)
 
         self.left_widget = QWidget()
@@ -100,25 +109,9 @@ class DataWindow(QWidget):
                 else:
                     self.table.setItem(row_idx, col_idx, QTableWidgetItem(str(value)))
 
-    def open_file(self):
-        file_dialog = QFileDialog()
-        filters = "Data Files (*.csv *.json *.xml *.xlsx);;CSV Files (*.csv);;JSON Files (*.json);;XML Files (*.xml);;Excel Files (*.xlsx)"
-        filepath, _ = file_dialog.getOpenFileName(self, "Open CSV File", "", filters)
-
-        self.load_file(filepath)
-
     def load_file(self, filepath: str):
-        # load the file path based on the type
-        if filepath.endswith(".csv"):
-            data = pd.read_csv(filepath)
-        elif filepath.endswith(".json"):
-            data = pd.read_json(filepath)
-        elif filepath.endswith(".xml"):
-            data = pd.read_xml(filepath)
-        elif filepath.endswith(".xlsx"):
-            data = pd.read_excel(filepath)
-        else:
-            raise ValueError("Unsupported file type")
+        # create a dataframe from the file
+        data = make_dataframe(filepath)
 
         # if the data doesn't exist, or it is empty,
         # then don't bother loading it into the viewer
@@ -133,7 +126,7 @@ class DataWindow(QWidget):
         self.switch_dataset(name)
 
         # emit the opened file and dataframe
-        self.file_opened.emit(name, data)
+        self.new_dataframe.emit(name, data)
 
     def add_dataset_button(self, name):
         btn = QToolButton()
@@ -153,8 +146,21 @@ class GraphWindow(QWidget):
     open_graphs = {}
     curr_graph = ""
 
-    def __init__(self):
+    single_file_graphs = [
+        "Histogram",
+        "Scatter Plot",
+        "Box Plot",
+        "Heatmap",
+        "KDE Plot",
+        "Correlation Matrix",
+        #"Bar Chart",
+        #"Pie Chart",
+    ]
+
+    def __init__(self, project_dir: Path):
         super().__init__()
+
+        self.PROJECT_DIR = project_dir
 
         ## --- Graph Display --- ##
         self.graph = MplCanvas()
@@ -183,7 +189,7 @@ class GraphWindow(QWidget):
 
         self.setLayout(self.layout)
 
-    def add_graph(self, metadata: dict):
+    def load_graph(self, metadata: dict):
         name = metadata["name"]
 
         if name in self.open_graphs.keys():
@@ -208,8 +214,14 @@ class GraphWindow(QWidget):
 
         name = metadata["name"]
         graph_type = metadata["type"]
-        df = metadata["data"]
+        data_source = metadata["data"]
         params = metadata["params"]
+
+        if graph_type in self.single_file_graphs:
+            src_path = str(self.PROJECT_DIR / "data" / data_source[0])
+            df = make_dataframe(src_path)
+        else:
+            raise ValueError("Unsupported graph type")
 
         if graph_type == "Histogram":
             feature = params["feature"]

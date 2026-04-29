@@ -29,9 +29,8 @@ class MainWindow(QMainWindow):
     ICONS_PATH = BASE_DIR / "assets" / "icons"
     PROJECTS_DIR = BASE_DIR / "projects"
 
-    # dictionary mapping project id to project .json filepath
-    proj_id_schema: dict[str, Path] = {}
-    proj_names: list[str] = []
+    # dictionary mapping project id to project name
+    proj_id_name: dict[str, str] = {}
     curr_proj = None
 
     def __init__(self):
@@ -87,24 +86,20 @@ class MainWindow(QMainWindow):
         self.pages.setCurrentWidget(self.home)
 
     def load_init_projects(self):
-        self.proj_id_schema.clear()
-        self.proj_names.clear()
+        self.proj_id_name.clear()
 
         # iterate through the projects folder
         for folder in self.PROJECTS_DIR.iterdir():
             if folder.is_dir():
                 # Split the folder name into two parts
                 name, proj_id = folder.name.rsplit("_", 1)
-                path_to_schema = self.PROJECTS_DIR / folder.name / f"{folder.name}.json"
 
-                self.proj_id_schema[proj_id] = path_to_schema
-                self.proj_names.append(name)
-
+                self.proj_id_name[proj_id] = name
                 self.home.add_proj_button(name, proj_id)
 
     def open_project(self, proj_id: str):
         # if the proj_id does not exist then give an error message
-        if not proj_id in self.proj_id_schema.keys():
+        if not proj_id in self.proj_id_name.keys():
             QMessageBox.warning(
                 self,
                 "Project Error",
@@ -113,8 +108,9 @@ class MainWindow(QMainWindow):
             return
 
         # extract the project schema and input it into the constructor
-        schema_path = self.proj_id_schema[proj_id]
-        proj = ProjectPage(schema_path)
+        full_id = self.proj_id_name[proj_id] + "_" + proj_id
+        proj_dir = self.PROJECTS_DIR / full_id
+        proj = ProjectPage(proj_dir, full_id)
 
         self.curr_proj = proj
         self.pages.addWidget(proj)
@@ -130,7 +126,7 @@ class MainWindow(QMainWindow):
             if index == 0: check = name
             else: check = name + str(index)
 
-            if check in self.proj_names:
+            if check in self.proj_id_name.values():
                 index += 1
             else:
                 proj_name = check
@@ -158,16 +154,15 @@ class MainWindow(QMainWindow):
 
         # create the project folders (data, graphs, info) into the main project folder
         (project_path / "data").mkdir(exist_ok=True)
-        (project_path / "data" / "raw").mkdir(exist_ok=True)
-        (project_path / "data" / "clean").mkdir(exist_ok=True)
+        #(project_path / "data" / "raw").mkdir(exist_ok=True)
+        #(project_path / "data" / "clean").mkdir(exist_ok=True)
         (project_path / "graphs").mkdir(exist_ok=True)
         (project_path / "info").mkdir(exist_ok=True)
 
         # update open project names and ids
-        self.proj_id_schema[proj_id] = path_to_schema
-        self.proj_names.append(proj_name)
+        self.proj_id_name[proj_id] = proj_name
 
-        self.home.add_button(proj_name, proj_id)
+        self.home.add_proj_button(proj_name, proj_id)
         self.open_project(proj_id)
 
     def generate_id(self, name: str):

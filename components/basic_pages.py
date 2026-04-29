@@ -19,7 +19,6 @@ class HomePage(QWidget):
     def __init__(self):
         super().__init__()
 
-
         self.new_proj_btn = QPushButton("Create New Project")
         self.new_proj_btn.clicked.connect(self.create_new_project)
         icon = QIcon(str(Path(__file__).resolve().parent.parent / "assets" / "icons" / "square-plus.svg"))

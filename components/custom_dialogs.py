@@ -93,38 +93,37 @@ class SingleFileGraph(QDialog):
 
         # grab the dataset
         dataset = self.fileCombo.currentText()
-        df = self.dataframes[dataset]
 
         # define the graph name and parameters based on the selected graph type
         if self.graphType == "Histogram" and self._combo_has_valid_selection(self.hist_feature):
             feat = self.hist_feature.currentText()
             bins = self.bins.value()
             param = {"feature": feat, "bins": bins}
-            name = f"{feat} Histogram"
+            name = f"{feat}_Histogram"
 
         elif self.graphType == "Scatter Plot" and self._combo_has_valid_selection(self.scat_feature_x) and self._combo_has_valid_selection(self.scat_feature_y):
             x = self.scat_feature_x.currentText()
             y = self.scat_feature_y.currentText()
             param = {"x": x, "y": y}
-            name = f"{x} v {y} Scatter Plot"
+            name = f"{x}_v_{y}_ScatterPlot"
 
         elif self.graphType == "Box Plot" and self._combo_has_valid_selection(self.box_feature):
             param = self.box_feature.currentText()
-            name = f"{param} Box Plot"
+            name = f"{param}_BoxPlot"
 
         elif self.graphType == "Heatmap" and self._combo_has_valid_selection(self.heatmap_feature_x) and self._combo_has_valid_selection(self.heatmap_feature_y):
             x = self.heatmap_feature_x.currentText()
             y = self.heatmap_feature_y.currentText()
             param = {"x": x, "y": y}
-            name = f"{x} v {y} Heatmap"
+            name = f"{x}_v_{y}_Heatmap"
 
         elif self.graphType == "KDE Plot" and self._combo_has_valid_selection(self.kde_feature):
             param = self.kde_feature.currentText()
-            name = f"{param} KDE Plot"
+            name = f"{param}_KDEPlot"
 
         elif self.graphType == "Correlation Matrix":
             param = {}
-            name = f"{dataset} Correlation Matrix"
+            name = f"{dataset}_Correlation_Matrix"
 
         else: return
 
@@ -132,7 +131,7 @@ class SingleFileGraph(QDialog):
         metadata = {
             "name": name,
             "type": self.graphType,
-            "data": df,
+            "data": [dataset],
             "params": param,
         }
 
@@ -257,6 +256,7 @@ class SingleFileGraph(QDialog):
 
     def update_feature_selections(self):
         file = self.fileCombo.currentText()
+        self.selected_file = file
 
         if file == self.default_text:
             self.generate_graph()
