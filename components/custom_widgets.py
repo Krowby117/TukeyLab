@@ -22,9 +22,6 @@ from PySide6.QtWidgets import (
     QStackedWidget
 )
 
-from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.figure import Figure
-
 import pandas as pd
 import seaborn as sns
 from pathlib import Path
@@ -33,13 +30,7 @@ import shutil
 import json
 
 from components.custom_dialogs import SingleFileGraph, DataInformation, MissingValueAnalysis
-
-class MplCanvas(FigureCanvas):
-    def __init__(self, parent=None):
-        fig = Figure()
-        self.ax = fig.add_subplot(111)
-        super().__init__(fig)
-        self.setParent(parent)
+from components.helper_classes import MplCanvas
 
 class ButtonList(QWidget):
     item_selected = Signal(str)
@@ -120,6 +111,13 @@ class ItemCreationMenu(QWidget):
         self.popup.created_graph.connect(self._close_graph_dialog)
         self.popup.open()
 
+    def _close_graph_dialog(self, metadata):
+        # add the type of item created to the metadata and emit
+        self.item_created.emit(["graph", metadata])
+
+        # set popup to none
+        self.popup = None
+
     def _open_info_dialog(self):
         if len(self.dataframes) < 1: # make sure there is at least one file loaded
             QMessageBox.information(self, "No Data Loaded",
@@ -145,14 +143,6 @@ class ItemCreationMenu(QWidget):
 
         # set popup to none
         self.popup = None
-
-    def _close_graph_dialog(self, metadata):
-        # add the type of item created to the metadata and emit
-        self.item_created.emit(["graph", metadata])
-
-        # set popup to none
-        self.popup = None
-
 
 class ItemViewer(QWidget):
     single_file_graphs = [

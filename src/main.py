@@ -6,7 +6,7 @@ from pathlib import Path
 import hashlib
 from datetime import datetime
 
-from components.New_project_page import ProjectPage
+from components.project_page import ProjectPage
 from components.basic_pages import HomePage
 
 from PySide6.QtWidgets import (
@@ -177,7 +177,7 @@ class MainWindow(QMainWindow):
 if __name__ == "__main__":
     app = QApplication(sys.argv)
 
-    theme_path = Path(__file__).resolve().parent.parent / "assets" / "themes" / "MacOs.qss"
+    theme_path = Path(__file__).resolve().parent.parent / "assets" / "themes" / "ElegantDark.qss"
     with open(theme_path, "r") as f:
         _style = f.read()
         app.setStyleSheet(_style)

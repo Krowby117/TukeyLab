@@ -1,6 +1,6 @@
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QPalette, QIcon
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QPalette, QIcon, QAction
 from PySide6.QtWidgets import (
     QWidget,
     QMainWindow,
@@ -18,109 +18,92 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QFormLayout,
     QTabWidget,
-    QLabel
+    QLabel,
+    QStackedWidget,
+    QToolBar
 )
 
+import pandas as pd
+import seaborn as sns
 from pathlib import Path
 import filecmp
 import shutil
 import json
 
-from components.custom_dialogs import SingleFileGraph, DataInformation, MissingValueAnalysis
-from components.old_custom_widgets import DataWindow, GraphWindow, InfoWindow
+from components.custom_widgets import ButtonList, ItemCreationMenu, ItemViewer
+
+def make_dataframe(filepath: str):
+    # load the file path based on the type
+    if filepath.endswith(".csv"):
+        return pd.read_csv(filepath)
+    elif filepath.endswith(".json"):
+        return pd.read_json(filepath)
+    elif filepath.endswith(".xml"):
+        return pd.read_xml(filepath)
+    elif filepath.endswith(".xlsx"):
+        return pd.read_excel(filepath)
+    else:
+        raise ValueError("Unsupported file type")
+
 
 class ProjectPage(QMainWindow):
-    dataframes = {}
-    current_dataframe = ""
-
     def __init__(self, project_dir: Path, full_id: str):
         super().__init__()
 
         self.PROJECT_DIR = project_dir
         self.FULL_ID = full_id
+        self.project_dataframes = {}
+        self.project_graphs = {}
+        self.current_dataframe = ""
 
-        self.table_dialog = None
-        self.info_dialog = None
+        # -- Set up the left bar -- #
+        self.source_menu = ButtonList()
+        self.source_menu.item_selected.connect(self._view_dataframe)
 
-        ## --- Tab window of different view modes --- ##
-        self.data_tab = DataWindow(self.PROJECT_DIR)
-        self.data_tab.file_selected.connect(self.import_datafile)
-        self.data_tab.new_dataframe.connect(self.add_dataframe)
+        self.created_items_menu = ButtonList()
+        self.created_items_menu.item_selected.connect(self._view_graph)
 
-        self.graph_tab = GraphWindow(self.PROJECT_DIR)
+        left_layout = QVBoxLayout()
+        left_layout.addWidget(self.source_menu)
+        left_layout.addWidget(self.created_items_menu)
 
-        self.info_tab = InfoWindow()
+        left_container = QWidget()
+        left_container.setLayout(left_layout)
 
-        self.tabs = QTabWidget()
-        self.tabs.addTab(self.data_tab, "Data Tables")
-        self.tabs.addTab(self.graph_tab, "Graphs")
-        self.tabs.addTab(self.info_tab, "Info Docs")
+        # -- Set up the middle widget -- #
+        self.item_view = ItemViewer()
 
-        ## --- Creation Sidebar --- ##
-        upload_file_button = QPushButton("+")
-        upload_file_button.clicked.connect(self.open_file)
-        icon = QIcon(str(Path(__file__).resolve().parent.parent / "assets" / "icons" / "file-plus-corner.svg"))
-        upload_file_button.setIcon(icon)
+        # -- Set up the right bar -- #
+        self.item_creation_menu = ItemCreationMenu()
+        self.item_creation_menu.item_created.connect(self._handle_new_item)
 
-        single_file_graph = QPushButton("+")
-        single_file_graph.clicked.connect(self.generate_table)
-        icon = QIcon(str(Path(__file__).resolve().parent.parent / "assets" / "icons" / "chart-area.svg"))
-        single_file_graph.setIcon(icon)
+        self.chat_window = QWidget()
 
-        get_data_info = QPushButton("+")
-        get_data_info.clicked.connect(lambda: self.generate_data_info(1))
-        icon = QIcon(str(Path(__file__).resolve().parent.parent / "assets" / "icons" / "file-text.svg"))
-        get_data_info.setIcon(icon)
+        right_layout = QVBoxLayout()
+        right_layout.addWidget(self.item_creation_menu)
+        right_layout.addWidget(self.chat_window)
 
-        missing_data_info = QPushButton("+")
-        missing_data_info.clicked.connect(lambda: self.generate_data_info(2))
+        right_container = QWidget()
+        right_container.setLayout(right_layout)
 
-        self.graph_scroller = QScrollArea()
-        self.graph_scroller.setWidgetResizable(True)
-        self.graph_scroller.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        # ---- Set up main widget layout ---- #
+        main_layout = QHBoxLayout()
+        main_layout.addWidget(left_container)
+        main_layout.addWidget(self.item_view)
+        main_layout.addWidget(right_container)
 
-        self.graph_container = QWidget()
-        self.glayout = QVBoxLayout(self.graph_container)
-        self.graph_scroller.setWidget(self.graph_container)
-        self.glayout.addStretch()
+        main_container = QWidget()
+        main_container.setLayout(main_layout)
 
-        self.right_layout = QVBoxLayout()
-        generator_buttons = QFormLayout()
-        generator_buttons.addRow("Upload Data Source: ", upload_file_button)
-        generator_buttons.addRow("Create Single-File Graph: ", single_file_graph)
-        generator_buttons.addRow("See Data Information: ", get_data_info)
-        generator_buttons.addRow("Missing Data Analysis: ", missing_data_info)
-        self.right_layout.addLayout(generator_buttons)
-        self.right_layout.addWidget(self.graph_scroller)
+        self.setCentralWidget(main_container)
+        self._make_project_toolbar()
+        self._load_schema()
 
-        self.right_widget = QWidget()
-        self.right_widget.setLayout(self.right_layout)
-        self.right_widget.setMinimumWidth(250)
-
-        ## --- Some styling stuff --- ##
-        # get the table's base color
-        table_bg = self.data_tab.table.palette().color(QPalette.ColorRole.Base)
-
-        # and to the graph container
-        self.graph_container.setAutoFillBackground(True)
-        palette = self.graph_container.palette()
-        palette.setColor(QPalette.ColorRole.Window, table_bg)
-        self.graph_container.setPalette(palette)
-
-        ## ---- Main widget / layout container ---- ##
-        self.main_container = QSplitter(Qt.Orientation.Horizontal)
-        self.main_container.addWidget(self.tabs)
-        self.main_container.addWidget(self.right_widget)
-        self.main_container.setSizes([775, 175])
-
-        self.setCentralWidget(self.main_container)
-
-        # load the project schema
-        self.load_schema()
-
-    def load_schema(self):
+    def _load_schema(self):
         # grab the schema
-        schema = self.grab_schema()
+        schema_path = self.PROJECT_DIR / (self.FULL_ID + ".json")
+        with schema_path.open("r", encoding="utf-8") as f:
+            schema = json.load(f)
 
         # grab the individual components of the schema
         datasets = schema["datasets"]
@@ -129,15 +112,16 @@ class ProjectPage(QMainWindow):
 
         # process each component as necessary
         for file in datasets:
-            self.data_tab.load_file(file)
+            self._load_file(file)
 
         for file in graphs:
             src_path = self.PROJECT_DIR / "graphs" / file
             with src_path.open("r", encoding="utf-8") as f:
                 metadata = json.load(f)
-            self.graph_tab.load_graph(metadata)
+            self._load_graph(metadata)
 
-        print("Schema loaded!")
+        for file in docs:
+            self._load_doc(file)
 
     def save_schema(self):
         # create a blank schema and load in basic information
@@ -170,21 +154,70 @@ class ProjectPage(QMainWindow):
         with schema_path.open("w", encoding="utf-8") as f:
             json.dump(proj_schema, f, indent=2)
 
-    def grab_schema(self):
-        # grab and unpack the schema
-        schema_path = self.PROJECT_DIR / (self.FULL_ID + ".json")
-        with schema_path.open("r", encoding="utf-8") as f:
-            return json.load(f)
+    def _make_project_toolbar(self):
+        toolbar = QToolBar("Project Toolbar")
+        toolbar.setMovable(False)
+        toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self.addToolBar(toolbar)
+
+        # icon directory path
+        icon_dir = Path(__file__).resolve().parent.parent / "assets" / "icons"
+
+        # Home button
+        file_icon = QIcon(str(icon_dir / "folder-open.svg"))
+        file_btn = QAction(file_icon, "Upload Datasource", self)
+        file_btn.triggered.connect(self._upload_new_file)
+        toolbar.addAction(file_btn)
+
+    def _upload_new_file(self):
+        file_dialog = QFileDialog()
+        filters = "Data Files (*.csv *.json *.xml *.xlsx);;CSV Files (*.csv);;JSON Files (*.json);;XML Files (*.xml);;Excel Files (*.xlsx)"
+
+        filepath, _ = file_dialog.getOpenFileName(self, "Open CSV File", "", filters)
+
+        self._import_datafile(filepath)
+        self._load_file(filepath)
+
+    def _load_file(self, filepath):
+        # create dataframe from source
+        src_path = str(self.PROJECT_DIR / "data" / filepath)
+        data = make_dataframe(src_path)
+
+        # add dataframe to project's dataframes
+        filename = filepath.split("/")[-1]  # grab the filename
+        self.project_dataframes[filename] = data
+
+        # update widget dataframes
+        self.item_creation_menu.update_dataframes(self.project_dataframes)
+        self.item_view.update_dataframes(self.project_dataframes)
+
+        # update source buttons menu
+        self.source_menu.add_button(filename)
+
+    def _load_graph(self, metadata):
+        name = metadata["name"]
+
+        if name in self.project_graphs.keys():
+            return
+
+        # add it to the project's graphs
+        self.project_graphs[name] = metadata
+
+        # update created items menu
+        self.created_items_menu.add_button(name)
+
+    def _load_doc(self, metadata):
+        pass
 
     # copies the newly loaded data source into the project directory
-    def import_datafile(self, filepath: str):
+    def _import_datafile(self, filepath: str):
         src = Path(filepath)
         data_dir = self.PROJECT_DIR / "data"
         data_dir.mkdir(parents=True, exist_ok=True)
 
         path = data_dir / src.name
-        if path.exists(): # if the file already exists
-            if filecmp.cmp(src, path, shallow=False): # and it's the same as the new file, then ignore it
+        if path.exists():  # if the file already exists
+            if filecmp.cmp(src, path, shallow=False):  # and it's the same as the new file, then ignore it
                 return
         else:
             shutil.copy2(src, path)  # preserves timestamps/metadata
@@ -202,8 +235,16 @@ class ProjectPage(QMainWindow):
 
         shutil.copy2(src, path)  # preserves timestamps/metadata
 
+    def _handle_new_item(self, item_data: list):
+        item_type = item_data[0]
+        metadata = item_data[1]
+
+        if item_type == "graph":
+            self._import_graph(metadata)
+            self._load_graph(metadata)
+
     # copies the newly created graph's metadata into the project directory
-    def import_graph(self, metadata: dict):
+    def _import_graph(self, metadata: dict):
         graphs_dir = self.PROJECT_DIR / "graphs"
         graphs_dir.mkdir(parents=True, exist_ok=True)
 
@@ -213,57 +254,9 @@ class ProjectPage(QMainWindow):
             # indent=4 makes the nested structure visually clear
             json.dump(metadata, f, indent=2)
 
-    def import_infofile(self):
-        pass
+    def _view_dataframe(self, name: str):
+        self.item_view.show_item("data", name)
 
-    def add_dataframe(self, name, df):
-        self.dataframes[name] = df
-
-    def open_file(self):
-        file_dialog = QFileDialog()
-        filters = "Data Files (*.csv *.json *.xml *.xlsx);;CSV Files (*.csv);;JSON Files (*.json);;XML Files (*.xml);;Excel Files (*.xlsx)"
-        filepath, _ = file_dialog.getOpenFileName(self, "Open CSV File", "", filters)
-
-        self.import_datafile(filepath)
-        self.data_tab.load_file(filepath)
-
-    def generate_table(self):
-        if len(self.dataframes) < 1:    # make sure there is at least one file loaded
-            QMessageBox.information(self, "No Data Loaded","At least one dataset is required before a table can be created.")
-            return
-
-        # then open the popup for creating a table
-        self.table_dialog = SingleFileGraph(self.dataframes, self)
-        self.table_dialog.setModal(True)
-        self.table_dialog.created_graph.connect(self._on_table_dialog_closed)
-        self.table_dialog.open()
-
-    def _on_table_dialog_closed(self, metadata):
-        self.import_graph(metadata)
-        self.graph_tab.load_graph(metadata)
-        self.table_dialog = None
-
-    def generate_data_info(self, num: int):
-        if len(self.dataframes) < 1:  # make sure there is at least one file loaded
-            QMessageBox.information(self, "No Data Loaded",
-                                    "At least one dataset is required before data information be viewed.")
-            return
-
-        if num == 1:
-            self.info_dialog = DataInformation(self.dataframes, self)
-            self.info_dialog.setModal(True)
-            self.info_dialog.created_doc.connect(self._on_info_dialog_closed)
-            self.info_dialog.open()
-
-        elif num == 2:
-            self.info_dialog = MissingValueAnalysis(self.dataframes, self)
-            self.info_dialog.setModal(True)
-            self.info_dialog.finished.connect(self._on_info_dialog_closed_temp)
-            self.info_dialog.open()
-
-    def _on_info_dialog_closed(self, doc_name, doc_type, item):
-        self.info_tab.add_info_doc(doc_name, doc_type, item)
-        self.info_dialog = None
-
-    def _on_info_dialog_closed_temp(self):
-        self.info_dialog = None
+    def _view_graph(self, name: str):
+        metadata = self.project_graphs[name]
+        self.item_view.show_item("graph", metadata)
