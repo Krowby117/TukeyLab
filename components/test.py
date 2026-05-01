@@ -31,3 +31,6 @@ while not valid:
 
 print(name)
 print(Path(__file__).resolve().parent)
+
+from qt_material import apply_stylesheet, list_themes
+print(list_themes())

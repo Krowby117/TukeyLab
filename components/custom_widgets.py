@@ -1,4 +1,3 @@
-from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QPalette, QIcon
@@ -18,29 +17,22 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QMessageBox,
     QFormLayout,
-    QTextBrowser,
-    QStackedWidget,
-    QGridLayout
+    QTabWidget,
+    QLabel,
+    QStackedWidget
 )
 
-import pandas as pd
-import seaborn as sns
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 
+import pandas as pd
+import seaborn as sns
+from pathlib import Path
+import filecmp
+import shutil
+import json
 
-def make_dataframe(filepath: str):
-    # load the file path based on the type
-    if filepath.endswith(".csv"):
-        return pd.read_csv(filepath)
-    elif filepath.endswith(".json"):
-        return pd.read_json(filepath)
-    elif filepath.endswith(".xml"):
-        return pd.read_xml(filepath)
-    elif filepath.endswith(".xlsx"):
-        return pd.read_excel(filepath)
-    else:
-        raise ValueError("Unsupported file type")
+from components.custom_dialogs import SingleFileGraph, DataInformation, MissingValueAnalysis
 
 class MplCanvas(FigureCanvas):
     def __init__(self, parent=None):
@@ -49,45 +41,165 @@ class MplCanvas(FigureCanvas):
         super().__init__(fig)
         self.setParent(parent)
 
-class DataWindow(QWidget):
-    file_selected = Signal(str)
-    new_dataframe = Signal(str, object)
+class ButtonList(QWidget):
+    item_selected = Signal(str)
 
-    dataframes = {}
-    curr_file = ""
-
-    def __init__(self, project_path: Path):
+    def __init__(self):
         super().__init__()
 
-        self.PROJECT_DIR = project_path
+        self._buttons = {}
 
-        self.table = QTableWidget()
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
-        ## --- File Loader Sidebar --- ##
-        self.file_scroller = QScrollArea()
-        self.file_scroller.setWidgetResizable(True)
-        self.file_scroller.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.container = QWidget()
+        self.layout = QVBoxLayout(self.container)
+        scroll_area.setWidget(self.container)
+        self.layout.addStretch()
 
-        self.file_container = QWidget()
-        self.flayout = QVBoxLayout(self.file_container)
-        self.file_scroller.setWidget(self.file_container)
-        self.flayout.addStretch()
+        outer_layout = QVBoxLayout()
+        outer_layout.addWidget(scroll_area)
+        self.setLayout(outer_layout)
 
-        self.left_layout = QVBoxLayout()
-        self.left_layout.addWidget(self.file_scroller)
+    def add_button(self, name: str):
+        if name in self._buttons:
+            return
 
-        self.left_widget = QWidget()
-        self.left_widget.setLayout(self.left_layout)
-        self.left_widget.setMinimumWidth(175)
-        self.left_widget.setMaximumWidth(250)
+        btn = QToolButton()
+        btn.setText(name)
+        btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        btn.clicked.connect(lambda: self._make_selection(name))
+        self.layout.insertWidget(self.layout.count() - 1, btn)
+        self._buttons[name] = btn
 
-        self.layout = QHBoxLayout()
-        self.layout.addWidget(self.left_widget)
-        self.layout.addWidget(self.table)
+    def _make_selection(self, text: str):
+        self.item_selected.emit(text)
 
-        self.setLayout(self.layout)
+class ItemCreationMenu(QWidget):
+    item_created = Signal(list)
 
-    def set_data(self, data):
+    def __init__(self):
+        super().__init__()
+
+        self.dataframes = {}
+        self.popup = None
+
+        # icon directory path
+        icon_dir = Path(__file__).resolve().parent.parent / "assets" / "icons"
+
+        # -- Setup each of the creation buttons -- #
+        graph_creation = QPushButton("+")
+        graph_creation.clicked.connect(self._open_graph_dialog)
+        icon = QIcon(str(icon_dir / "chart-area.svg"))
+        graph_creation.setIcon(icon)
+
+        info_creation = QPushButton("+")
+        info_creation.clicked.connect(self._open_info_dialog)
+        icon = QIcon(str(icon_dir / "file-text.svg"))
+        info_creation.setIcon(icon)
+
+        layout = QFormLayout()
+        layout.addRow("New Graph: ", graph_creation)
+        layout.addRow("New Info Doc: ", info_creation)
+
+        self.setLayout(layout)
+
+    def update_dataframes(self, dfs):
+        self.dataframes = dict(dfs)
+
+    def _open_graph_dialog(self):
+        if len(self.dataframes) < 1: # make sure there is at least one file loaded
+            QMessageBox.information(self, "No Data Loaded",
+                "At least one datasource is required before a table can be created.")
+            return
+
+        # then open the popup for creating a table
+        self.popup = SingleFileGraph(self.dataframes)
+        self.popup.setModal(True)
+        self.popup.created_graph.connect(self._close_graph_dialog)
+        self.popup.open()
+
+    def _open_info_dialog(self):
+        if len(self.dataframes) < 1: # make sure there is at least one file loaded
+            QMessageBox.information(self, "No Data Loaded",
+                "At least one datasource is required before data information be viewed.")
+            return
+
+        # then open pop up for generating data info
+        self.popup = DataInformation(self.dataframes, self)
+        self.popup.setModal(True)
+        self.popup.created_doc.connect(self._close_info_dialog)
+        self.popup.open()
+
+    def _close_info_dialog(self, doc_name, doc_type, item):
+        # create the item metadata
+        metadata = {
+            "doc_name": doc_name,
+            "doc_type": doc_type,
+            "doc":     item
+        }
+
+        # emit the metadata and item type
+        self.item_created.emit(["doc", metadata])
+
+        # set popup to none
+        self.popup = None
+
+    def _close_graph_dialog(self, metadata):
+        # add the type of item created to the metadata and emit
+        self.item_created.emit(["graph", metadata])
+
+        # set popup to none
+        self.popup = None
+
+
+class ItemViewer(QWidget):
+    single_file_graphs = [
+        "Histogram",
+        "Scatter Plot",
+        "Box Plot",
+        "Heatmap",
+        "KDE Plot",
+        "Correlation Matrix",
+        #"Bar Chart",
+        #"Pie Chart",
+    ]
+
+    curr_graph = ""
+
+    def __init__(self):
+        super().__init__()
+
+        self.dataframes = {}
+
+        # -- define the different item view types -- #
+        self.table = QTableWidget()     # for viewing dataframes
+        self.graph = MplCanvas()       # for viewing graphs
+        self.doc = QWidget()           # for viewing docs
+
+        self.view_stack = QStackedWidget()
+        self.view_stack.addWidget(self.table)
+        self.view_stack.addWidget(self.graph)
+        self.view_stack.addWidget(self.doc)
+
+        layout = QVBoxLayout()
+        layout.addWidget(self.view_stack)
+        self.setLayout(layout)
+
+    def update_dataframes(self, dfs):
+        self.dataframes = dict(dfs)
+
+    def show_item(self, item_type: str, item_data):
+        if item_type == "data":
+            self._show_data(item_data)
+        elif item_type == "graph":
+            self._show_graph(item_data)
+        elif item_type == "doc":
+            self._show_doc(item_data)
+
+    def _show_data(self, name: str):
+        data = self.dataframes[name]
         if data is None or data.empty:
             return
 
@@ -112,118 +224,26 @@ class DataWindow(QWidget):
                 else:
                     self.table.setItem(row_idx, col_idx, QTableWidgetItem(str(value)))
 
-    def load_file(self, filepath: str):
-        # create a dataframe from the file
-        src_path = str(self.PROJECT_DIR / "data" / filepath)
-        data = make_dataframe(src_path)
+        # set the table as the active view
+        self.view_stack.setCurrentWidget(self.table)
 
-        # if the data doesn't exist, or it is empty,
-        # then don't bother loading it into the viewer
-        if data is None or data.empty:
+    def _show_graph(self, metadata):
+        if metadata is None or not metadata:
             return
 
-        name = filepath.split("/")[-1]  # grab the filename
-        self.dataframes[name] = data
-        self.add_dataset_button(name)   # add the button
-
-        # set it as the currently open dataset
-        self.switch_dataset(name)
-
-        # emit the opened file and dataframe
-        self.new_dataframe.emit(name, data)
-
-    def add_dataset_button(self, name):
-        btn = QToolButton()
-        btn.setText(name)
-        btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        btn.clicked.connect(lambda: self.switch_dataset(name))
-
-        # Insert before the stretch widget
-        self.flayout.insertWidget(self.flayout.count() - 1, btn)
-
-    def switch_dataset(self, name):
-        if name in self.dataframes.keys() and name != self.curr_file:
-            self.curr_file = name
-            self.set_data(self.dataframes[name])
-
-class GraphWindow(QWidget):
-    open_graphs = {}
-    curr_graph = ""
-
-    single_file_graphs = [
-        "Histogram",
-        "Scatter Plot",
-        "Box Plot",
-        "Heatmap",
-        "KDE Plot",
-        "Correlation Matrix",
-        #"Bar Chart",
-        #"Pie Chart",
-    ]
-
-    def __init__(self, project_dir: Path):
-        super().__init__()
-
-        self.PROJECT_DIR = project_dir
-
-        ## --- Graph Display --- ##
-        self.graph = MplCanvas()
-
-        ## --- Graph Buttons Sidebar --- ##
-        self.btn_scroller = QScrollArea()
-        self.btn_scroller.setWidgetResizable(True)
-        self.btn_scroller.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-
-        self.btn_container = QWidget()
-        self.flayout = QVBoxLayout(self.btn_container)
-        self.btn_scroller.setWidget(self.btn_container)
-        self.flayout.addStretch()
-
-        self.left_layout = QVBoxLayout()
-        self.left_layout.addWidget(self.btn_scroller)
-
-        self.left_widget = QWidget()
-        self.left_widget.setLayout(self.left_layout)
-        self.left_widget.setMinimumWidth(175)
-        self.left_widget.setMaximumWidth(250)
-
-        self.layout = QHBoxLayout()
-        self.layout.addWidget(self.left_widget)
-        self.layout.addWidget(self.graph)
-
-        self.setLayout(self.layout)
-
-    def load_graph(self, metadata: dict):
-        name = metadata["name"]
-
-        if name in self.open_graphs.keys():
-            return
-
-        self.open_graphs[name] = metadata
-        self.add_graph_button(name)
-        self.switch_graph(name)
-
-    def _reset_plot_area(self):
-        # Recreate the main axis so heatmap colorbar/layout changes never persist.
+        # resets the plot area so a fresh graph gets updated
         fig = self.graph.figure
         fig.clear()
         self.graph.ax = fig.add_subplot(111)
         self.graph.draw()
 
-    def set_graph(self, metadata: dict):
-        if metadata is None or not metadata:
-            return
-
-        self._reset_plot_area()
-
         name = metadata["name"]
         graph_type = metadata["type"]
-        data_source = metadata["data"]
+        data = metadata["data"]
         params = metadata["params"]
 
         if graph_type in self.single_file_graphs:
-            src_path = str(self.PROJECT_DIR / "data" / data_source[0])
-            df = make_dataframe(src_path)
+            df = self.dataframes[data[0]]
         else:
             raise ValueError("Unsupported graph type")
 
@@ -280,124 +300,8 @@ class GraphWindow(QWidget):
             self.graph.ax.set_title("Correlation Matrix")
             self.graph.draw()
 
-    def add_graph_button(self, name):
-        btn = QToolButton()
-        btn.setText(name)
-        btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        btn.clicked.connect(lambda: self.switch_graph(name))
+        # set the graph as the active view
+        self.view_stack.setCurrentWidget(self.graph)
 
-        # Insert before the stretch widget
-        self.flayout.insertWidget(self.flayout.count() - 1, btn)
-
-    def switch_graph(self, name):
-        if not name in self.open_graphs.keys() or name == self.curr_graph:
-            return
-
-        metadata = self.open_graphs[name]
-        self.set_graph(metadata)
-        self.curr_graph = name
-
-class InfoWindow(QWidget):
-    documents = {}
-    curr_doc = ""
-
-    def __init__(self):
-        super().__init__()
-
-        ## --- Display Item Stack --- ##
-        self.text = QTextBrowser()
-        self.table = QTableWidget()
-
-        self.display_stack = QStackedWidget()
-        self.display_stack.addWidget(self.text)
-        self.display_stack.addWidget(self.table)
-
-        ## --- Document Buttons Sidebar --- ##
-        self.btn_scroller = QScrollArea()
-        self.btn_scroller.setWidgetResizable(True)
-        self.btn_scroller.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-
-        self.btn_container = QWidget()
-        self.flayout = QVBoxLayout(self.btn_container)
-        self.btn_scroller.setWidget(self.btn_container)
-        self.flayout.addStretch()
-
-        self.left_layout = QVBoxLayout()
-        self.left_layout.addWidget(self.btn_scroller)
-
-        self.left_widget = QWidget()
-        self.left_widget.setLayout(self.left_layout)
-        self.left_widget.setMinimumWidth(175)
-        self.left_widget.setMaximumWidth(250)
-
-        self.layout = QHBoxLayout()
-        self.layout.addWidget(self.left_widget)
-        self.layout.addWidget(self.display_stack)
-
-        self.setLayout(self.layout)
-
-    def add_info_doc(self, name: str, doc_type: str, item: object):
-        if name in self.documents.keys():
-            return
-
-        self.documents[name] = [doc_type, item]
-        self.add_document_button(name)
-        self.switch_document(name)
-
-    def set_text(self, text):
-        if not text: return
-
-        # set the text as the active widget in the stack
-        self.display_stack.setCurrentWidget(self.text)
-
-        self.text.clear()
-        self.text.setText(text)
-
-    def set_data(self, data):
-        if data is None or data.empty:
-            return
-
-        # set the table as the active widget in the stack
-        self.display_stack.setCurrentWidget(self.table)
-
-        # clear the existing table data
-        self.table.clear()
-        self.table.setRowCount(0)
-        self.table.setColumnCount(0)
-
-        # grab the headers
-        headers = list(data.columns)
-        self.table.setColumnCount(len(headers))
-        self.table.setHorizontalHeaderLabels(headers)
-
-        rows = data.values
-        self.table.setRowCount(len(rows))
-
-        # add the data into the table
-        for row_idx, row in enumerate(rows):
-            for col_idx, value in enumerate(row):
-                if pd.isna(value):
-                    self.table.setItem(row_idx, col_idx, QTableWidgetItem("-"))
-                else:
-                    self.table.setItem(row_idx, col_idx, QTableWidgetItem(str(value)))
-
-    def add_document_button(self, name):
-        btn = QToolButton()
-        btn.setText(name)
-        btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        btn.clicked.connect(lambda: self.switch_document(name))
-
-        # Insert before the stretch widget
-        self.flayout.insertWidget(self.flayout.count() - 1, btn)
-
-    def switch_document(self, name):
-        if not name in self.documents.keys() or name == self.curr_doc:
-            return
-
-        doc_type = self.documents[name][0]
-        item = self.documents[name][1]
-
-        if doc_type == "text": self.set_text(item)
-        elif doc_type == "table": self.set_data(item)
-
-        self.curr_doc = name
+    def _show_doc(self, metadata):
+        pass

@@ -6,8 +6,9 @@ from pathlib import Path
 import hashlib
 from datetime import datetime
 
-from components.project_page import ProjectPage
+from components.New_project_page import ProjectPage
 from components.basic_pages import HomePage
+
 from PySide6.QtWidgets import (
     QApplication,
     QMainWindow,
@@ -23,6 +24,9 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtGui import QAction, QIcon
 from PySide6.QtCore import Qt
+
+from qt_material import apply_stylesheet
+import qdarktheme
 
 class MainWindow(QMainWindow):
     BASE_DIR = Path(__file__).resolve().parent.parent
@@ -172,6 +176,11 @@ class MainWindow(QMainWindow):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
+
+    theme_path = Path(__file__).resolve().parent.parent / "assets" / "themes" / "MacOs.qss"
+    with open(theme_path, "r") as f:
+        _style = f.read()
+        app.setStyleSheet(_style)
 
     widget = MainWindow()
     widget.show()

@@ -27,7 +27,7 @@ import shutil
 import json
 
 from components.custom_dialogs import SingleFileGraph, DataInformation, MissingValueAnalysis
-from components.custom_widgets import DataWindow, GraphWindow, InfoWindow
+from components.old_custom_widgets import DataWindow, GraphWindow, InfoWindow
 
 class ProjectPage(QMainWindow):
     dataframes = {}

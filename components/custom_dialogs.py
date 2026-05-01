@@ -25,7 +25,7 @@ import pandas as pd
 import hashlib
 import time
 
-from components.custom_widgets import MplCanvas
+from components.old_custom_widgets import MplCanvas
 
 class SingleFileGraph(QDialog):
     default_text: str = " --- "

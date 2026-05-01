@@ -1,0 +1,219 @@
+
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QPalette, QIcon, QAction
+from PySide6.QtWidgets import (
+    QWidget,
+    QMainWindow,
+    QPushButton,
+    QVBoxLayout,
+    QHBoxLayout,
+    QFileDialog,
+    QTableWidget,
+    QTableWidgetItem,
+    QToolButton,
+    QStyle,
+    QScrollArea,
+    QSplitter,
+    QSizePolicy,
+    QMessageBox,
+    QFormLayout,
+    QTabWidget,
+    QLabel,
+    QStackedWidget,
+    QToolBar
+)
+
+import pandas as pd
+import seaborn as sns
+from pathlib import Path
+import filecmp
+import shutil
+import json
+
+from components.custom_dialogs import SingleFileGraph, DataInformation, MissingValueAnalysis
+from components.custom_widgets import ButtonList, ItemCreationMenu, ItemViewer
+
+
+def make_dataframe(filepath: str):
+    # load the file path based on the type
+    if filepath.endswith(".csv"):
+        return pd.read_csv(filepath)
+    elif filepath.endswith(".json"):
+        return pd.read_json(filepath)
+    elif filepath.endswith(".xml"):
+        return pd.read_xml(filepath)
+    elif filepath.endswith(".xlsx"):
+        return pd.read_excel(filepath)
+    else:
+        raise ValueError("Unsupported file type")
+
+
+class ProjectPage(QMainWindow):
+    def __init__(self, project_dir: Path, full_id: str):
+        super().__init__()
+
+        self.PROJECT_DIR = project_dir
+        self.FULL_ID = full_id
+        self.project_dataframes = {}
+        self.project_graphs = {}
+        self.current_dataframe = ""
+
+        # -- Set up the left bar -- #
+        self.source_menu = ButtonList()
+        self.source_menu.item_selected.connect(self._view_dataframe)
+
+        self.created_items_menu = ButtonList()
+        self.created_items_menu.item_selected.connect(self._view_graph)
+
+        left_layout = QVBoxLayout()
+        left_layout.addWidget(self.source_menu)
+        left_layout.addWidget(self.created_items_menu)
+
+        left_container = QWidget()
+        left_container.setLayout(left_layout)
+
+        # -- Set up the middle widget -- #
+        self.item_view = ItemViewer()
+
+        # -- Set up the right bar -- #
+        self.item_creation_menu = ItemCreationMenu()
+        self.item_creation_menu.item_created.connect(self._handle_new_item)
+
+        self.chat_window = QWidget()
+
+        right_layout = QVBoxLayout()
+        right_layout.addWidget(self.item_creation_menu)
+        right_layout.addWidget(self.chat_window)
+
+        right_container = QWidget()
+        right_container.setLayout(right_layout)
+
+        # ---- Set up main widget layout ---- #
+        main_layout = QHBoxLayout()
+        main_layout.addWidget(left_container)
+        main_layout.addWidget(self.item_view)
+        main_layout.addWidget(right_container)
+
+        main_container = QWidget()
+        main_container.setLayout(main_layout)
+
+        self.setCentralWidget(main_container)
+        self._make_project_toolbar()
+        self._load_schema()
+
+    def _load_schema(self):
+        # grab the schema
+        schema_path = self.PROJECT_DIR / (self.FULL_ID + ".json")
+        with schema_path.open("r", encoding="utf-8") as f:
+            schema = json.load(f)
+
+        # grab the individual components of the schema
+        datasets = schema["datasets"]
+        graphs = schema["graphs"]
+        docs = schema["info_docs"]
+
+        # process each component as necessary
+        for file in datasets:
+            self._load_file(file)
+
+        for file in graphs:
+            src_path = self.PROJECT_DIR / "graphs" / file
+            with src_path.open("r", encoding="utf-8") as f:
+                metadata = json.load(f)
+            self._load_graph(metadata)
+
+        for file in docs:
+            self._load_doc(file)
+
+        print("Schema loaded!")
+
+    def _make_project_toolbar(self):
+        toolbar = QToolBar("Project Toolbar")
+        toolbar.setMovable(False)
+        toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self.addToolBar(toolbar)
+
+        # icon directory path
+        icon_dir = Path(__file__).resolve().parent.parent / "assets" / "icons"
+
+        # Home button
+        file_icon = QIcon(str(icon_dir / "folder-open.svg"))
+        file_btn = QAction(file_icon, "Upload Datasource", self)
+        file_btn.triggered.connect(self._upload_new_file)
+        toolbar.addAction(file_btn)
+
+    def _upload_new_file(self):
+        file_dialog = QFileDialog()
+        filters = "Data Files (*.csv *.json *.xml *.xlsx);;CSV Files (*.csv);;JSON Files (*.json);;XML Files (*.xml);;Excel Files (*.xlsx)"
+
+        filepath, _ = file_dialog.getOpenFileName(self, "Open CSV File", "", filters)
+
+        self._import_datafile(filepath)
+        self._load_file(filepath)
+
+    def _load_file(self, filepath):
+        # create dataframe from source
+        src_path = str(self.PROJECT_DIR / "data" / filepath)
+        data = make_dataframe(src_path)
+
+        # add dataframe to project's dataframes
+        filename = filepath.split("/")[-1]  # grab the filename
+        self.project_dataframes[filename] = data
+
+        # update widget dataframes
+        self.item_creation_menu.update_dataframes(self.project_dataframes)
+        self.item_view.update_dataframes(self.project_dataframes)
+
+        # update source buttons menu
+        self.source_menu.add_button(filename)
+
+    def _load_graph(self, metadata):
+        name = metadata["name"]
+
+        if name in self.project_graphs.keys():
+            return
+
+        # add it to the project's graphs
+        self.project_graphs[name] = metadata
+
+        # update created items menu
+        self.created_items_menu.add_button(name)
+
+    def _load_doc(self, metadata):
+        pass
+
+    # copies the newly loaded data source into the project directory
+    def _import_datafile(self, filepath: str):
+        src = Path(filepath)
+        data_dir = self.PROJECT_DIR / "data"
+        data_dir.mkdir(parents=True, exist_ok=True)
+
+        path = data_dir / src.name
+        if path.exists():  # if the file already exists
+            if filecmp.cmp(src, path, shallow=False):  # and it's the same as the new file, then ignore it
+                return
+        else:
+            shutil.copy2(src, path)  # preserves timestamps/metadata
+            return
+
+        stem, suffix = src.stem, src.suffix
+        i = 1
+        while path.exists():
+            path = data_dir / f"{stem}_{i}{suffix}"
+            if path.exists():
+                if filecmp.cmp(src, path, shallow=False):
+                    return
+                i += 1
+                continue
+
+        shutil.copy2(src, path)  # preserves timestamps/metadata
+
+    def _handle_new_item(self, item_data: list):
+        pass
+
+    def _view_dataframe(self, name: str):
+        self.item_view.show_item("data", name)
+
+    def _view_graph(self, name: str):
+        metadata = self.project_graphs[name]
+        self.item_view.show_item("graph", metadata)
