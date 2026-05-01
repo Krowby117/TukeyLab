@@ -121,19 +121,19 @@ class ItemCreationMenu(QWidget):
         icon_dir = Path(__file__).resolve().parent.parent / "assets" / "icons"
 
         # -- Setup each of the creation buttons -- #
-        upload_file = QPushButton("+")
+        upload_file = QPushButton()
         upload_file.clicked.connect(self._upload_new_file)
-        icon = QIcon(str(icon_dir / "folder-open.svg"))
+        icon = QIcon(str(icon_dir / "file-up.svg"))
         upload_file.setIcon(icon)
 
-        graph_creation = QPushButton("+")
+        graph_creation = QPushButton()
         graph_creation.clicked.connect(self._open_graph_dialog)
-        icon = QIcon(str(icon_dir / "chart-area.svg"))
+        icon = QIcon(str(icon_dir / "image-plus.svg"))
         graph_creation.setIcon(icon)
 
-        info_creation = QPushButton("+")
+        info_creation = QPushButton()
         info_creation.clicked.connect(self._open_info_dialog)
-        icon = QIcon(str(icon_dir / "file-text.svg"))
+        icon = QIcon(str(icon_dir / "file-plus-corner.svg"))
         info_creation.setIcon(icon)
 
         # Create content layout
@@ -248,8 +248,22 @@ class ItemViewer(QWidget):
         self.view_stack.addWidget(self.graph)
         self.view_stack.addWidget(self.doc)
 
+        self.view_container = QWidget()
+        self.view_container.setObjectName("itemViewContainer")
+        self.view_container.setStyleSheet("""
+            #itemViewContainer {
+                border: 1px solid #404040;
+                border-radius: 8px;
+                background-color: #2d2d2d;
+            }
+        """)
+        container_layout = QVBoxLayout(self.view_container)
+        container_layout.setContentsMargins(8, 8, 8, 8)
+        container_layout.addWidget(self.view_stack)
+
         layout = QVBoxLayout()
-        layout.addWidget(self.view_stack)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self.view_container)
         self.setLayout(layout)
 
     def update_dataframes(self, dfs):

@@ -53,12 +53,12 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(self.pages)
 
         self.create_toolbar()
-        self._set_toolbar_title("Home")
         self.load_init_projects()
 
     def create_toolbar(self):
         toolbar = QToolBar("Main Toolbar")
         toolbar.setMovable(False)
+        toolbar.setStyleSheet("QToolBar { font-size: 14px; }")
         self.addToolBar(toolbar)
 
         # Home button.
@@ -69,14 +69,14 @@ class MainWindow(QMainWindow):
 
         self.toolbar_title = QLabel("")
         self.toolbar_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.toolbar_title.setStyleSheet("font-weight: 600;")
+        self.toolbar_title.setStyleSheet("font-size: 18px; font-weight: 600;")
         toolbar.addWidget(self.toolbar_title)
 
         right_spacer = QWidget()
         right_spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         toolbar.addWidget(right_spacer)
 
-        # Right home button.
+        # settings button
         settings_icon = QIcon(str(self.ICONS_PATH / "settings.svg"))
         settings_btn = QAction(settings_icon, "Settings", self)
         toolbar.addAction(settings_btn)

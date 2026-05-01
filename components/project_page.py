@@ -79,6 +79,14 @@ class ProjectPage(QMainWindow):
         # -- Set up the middle widget -- #
         self.item_view = ItemViewer()
 
+        middle_layout = QVBoxLayout()
+        middle_layout.setContentsMargins(10, top_padding, 10, 10)
+        middle_layout.addWidget(self.item_view)
+        #middle_layout.addStretch()
+
+        middle_container = QWidget()
+        middle_container.setLayout(middle_layout)
+
         # -- Set up the right bar -- #
         self.item_creation_menu = ItemCreationMenu()
         self.item_creation_menu.item_created.connect(self._handle_new_item)
@@ -100,7 +108,7 @@ class ProjectPage(QMainWindow):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
         main_layout.addWidget(left_container, 0)
-        main_layout.addWidget(self.item_view, 3)
+        main_layout.addWidget(middle_container, 3)
         main_layout.addWidget(right_container, 0)
 
         main_container = QWidget()

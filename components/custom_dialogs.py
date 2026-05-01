@@ -89,7 +89,7 @@ class SingleFileGraph(QDialog):
 
     def create_graph(self):
         if not self._combo_has_valid_selection(self.fileCombo):
-            return
+            self.reject()
 
         # grab the dataset
         dataset = self.fileCombo.currentText()
@@ -420,7 +420,7 @@ class DataInformation(QDialog):
 
     def create_document(self):
         if self.info is None or self.info.empty:
-            return
+            self.reject()
 
         doc_name = self.activeFile + " General Info"
         self.created_doc.emit(doc_name, "table", self.info)
