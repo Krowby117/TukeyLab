@@ -20,7 +20,8 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QMessageBox,
     QToolBar,
-    QStyle
+    QStyle,
+    QSizePolicy
 )
 from PySide6.QtGui import QAction, QIcon
 from PySide6.QtCore import Qt
@@ -52,34 +53,36 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(self.pages)
 
         self.create_toolbar()
+        self._set_toolbar_title("Home")
         self.load_init_projects()
 
     def create_toolbar(self):
         toolbar = QToolBar("Main Toolbar")
         toolbar.setMovable(False)
-        #toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         self.addToolBar(toolbar)
 
-        # Home button
+        # Home button.
         home_icon = QIcon(str(self.ICONS_PATH / "flask-conical.svg"))
-        home_btn = QAction(home_icon, "TukeyLab", self)
+        home_btn = QAction(home_icon, "Home", self)
         home_btn.triggered.connect(self.open_homepage)
         toolbar.addAction(home_btn)
 
-        # # New File Action
-        # new_act = QAction("New", self)
-        # new_act.triggered.connect(lambda: self.editor.clear())
-        # toolbar.addAction(new_act)
-        #
-        # # Open File Action
-        # open_act = QAction("Open", self)
-        # open_act.triggered.connect(self.open_file)
-        # toolbar.addAction(open_act)
-        #
-        # # Save File Action
-        # save_act = QAction("Save", self)
-        # save_act.triggered.connect(self.save_file)
-        # toolbar.addAction(save_act)
+        self.toolbar_title = QLabel("")
+        self.toolbar_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.toolbar_title.setStyleSheet("font-weight: 600;")
+        toolbar.addWidget(self.toolbar_title)
+
+        right_spacer = QWidget()
+        right_spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        toolbar.addWidget(right_spacer)
+
+        # Right home button.
+        settings_icon = QIcon(str(self.ICONS_PATH / "settings.svg"))
+        settings_btn = QAction(settings_icon, "Settings", self)
+        toolbar.addAction(settings_btn)
+
+    def _set_toolbar_title(self, title: str):
+        self.toolbar_title.setText(title)
 
     def open_homepage(self):
         if self.curr_proj:
@@ -88,6 +91,7 @@ class MainWindow(QMainWindow):
             self.curr_proj = None
 
         self.pages.setCurrentWidget(self.home)
+        self._set_toolbar_title("")
 
     def load_init_projects(self):
         self.proj_id_name.clear()
@@ -119,6 +123,7 @@ class MainWindow(QMainWindow):
         self.curr_proj = proj
         self.pages.addWidget(proj)
         self.pages.setCurrentWidget(proj)
+        self._set_toolbar_title(self.proj_id_name[proj_id])
 
     def create_new_proj(self, name: str):
         # this ensures that no project shares a name

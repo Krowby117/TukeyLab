@@ -57,18 +57,24 @@ class ProjectPage(QMainWindow):
         self.current_dataframe = ""
 
         # -- Set up the left bar -- #
-        self.source_menu = ButtonList()
+        self.source_menu = ButtonList("Data Sources")
         self.source_menu.item_selected.connect(self._view_dataframe)
 
-        self.created_items_menu = ButtonList()
+        self.created_items_menu = ButtonList("Created Items")
         self.created_items_menu.item_selected.connect(self._view_graph)
 
+        top_padding = 10
+
         left_layout = QVBoxLayout()
-        left_layout.addWidget(self.source_menu)
-        left_layout.addWidget(self.created_items_menu)
+        left_layout.setContentsMargins(10, top_padding, 10, 10)
+        left_layout.setSpacing(5)
+        left_layout.addWidget(self.source_menu, 1)
+        left_layout.addWidget(self.created_items_menu, 2)
+        left_layout.addStretch()
 
         left_container = QWidget()
         left_container.setLayout(left_layout)
+        left_container.setFixedWidth(200)
 
         # -- Set up the middle widget -- #
         self.item_view = ItemViewer()
@@ -80,23 +86,27 @@ class ProjectPage(QMainWindow):
         self.chat_window = QWidget()
 
         right_layout = QVBoxLayout()
+        right_layout.setContentsMargins(10, top_padding, 10, 0)
+        right_layout.setSpacing(15)
         right_layout.addWidget(self.item_creation_menu)
-        right_layout.addWidget(self.chat_window)
+        right_layout.addWidget(self.chat_window, 1)
 
         right_container = QWidget()
         right_container.setLayout(right_layout)
+        right_container.setFixedWidth(300)
 
         # ---- Set up main widget layout ---- #
         main_layout = QHBoxLayout()
-        main_layout.addWidget(left_container)
-        main_layout.addWidget(self.item_view)
-        main_layout.addWidget(right_container)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
+        main_layout.addWidget(left_container, 0)
+        main_layout.addWidget(self.item_view, 3)
+        main_layout.addWidget(right_container, 0)
 
         main_container = QWidget()
         main_container.setLayout(main_layout)
 
         self.setCentralWidget(main_container)
-        self._make_project_toolbar()
         self._load_schema()
 
     def _load_schema(self):
@@ -153,30 +163,6 @@ class ProjectPage(QMainWindow):
         schema_path = self.PROJECT_DIR / (self.FULL_ID + ".json")
         with schema_path.open("w", encoding="utf-8") as f:
             json.dump(proj_schema, f, indent=2)
-
-    def _make_project_toolbar(self):
-        toolbar = QToolBar("Project Toolbar")
-        toolbar.setMovable(False)
-        toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-        self.addToolBar(toolbar)
-
-        # icon directory path
-        icon_dir = Path(__file__).resolve().parent.parent / "assets" / "icons"
-
-        # Home button
-        file_icon = QIcon(str(icon_dir / "folder-open.svg"))
-        file_btn = QAction(file_icon, "Upload Datasource", self)
-        file_btn.triggered.connect(self._upload_new_file)
-        toolbar.addAction(file_btn)
-
-    def _upload_new_file(self):
-        file_dialog = QFileDialog()
-        filters = "Data Files (*.csv *.json *.xml *.xlsx);;CSV Files (*.csv);;JSON Files (*.json);;XML Files (*.xml);;Excel Files (*.xlsx)"
-
-        filepath, _ = file_dialog.getOpenFileName(self, "Open CSV File", "", filters)
-
-        self._import_datafile(filepath)
-        self._load_file(filepath)
 
     def _load_file(self, filepath):
         # create dataframe from source
@@ -239,7 +225,10 @@ class ProjectPage(QMainWindow):
         item_type = item_data[0]
         metadata = item_data[1]
 
-        if item_type == "graph":
+        if item_type == "data":
+            self._import_datafile(metadata)
+            self._load_file(metadata)
+        elif item_type == "graph":
             self._import_graph(metadata)
             self._load_graph(metadata)
 

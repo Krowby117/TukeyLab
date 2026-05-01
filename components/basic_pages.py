@@ -26,6 +26,16 @@ class HomePage(QWidget):
         self.new_proj_btn.setText("New Project")
         self.new_proj_btn.setFixedSize(100, 100)
         self.new_proj_btn.clicked.connect(self.create_new_project)
+        self.new_proj_btn.setStyleSheet("""
+            QToolButton {
+                border-radius: 10px;
+                background-color: #2d2d2d;
+                border: 1px solid #404040;
+            }
+            QToolButton:hover {
+                background-color: #3d3d3d;
+            }
+        """)
         icon = QIcon(str(Path(__file__).resolve().parent.parent / "assets" / "icons" / "square-plus.svg"))
         self.new_proj_btn.setIcon(icon)
         self.new_proj_btn.setIconSize(QSize(80, 80))
@@ -55,6 +65,16 @@ class HomePage(QWidget):
         proj_btn.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
         proj_btn.clicked.connect(lambda: self.open_project(proj_id))
         proj_btn.setFixedSize(100, 100)
+        proj_btn.setStyleSheet("""
+            QToolButton {
+                border-radius: 10px;
+                background-color: #2d2d2d;
+                border: 1px solid #404040;
+            }
+            QToolButton:hover {
+                background-color: #3d3d3d;
+            }
+        """)
         icon = QIcon(str(Path(__file__).resolve().parent.parent / "assets" / "icons" / "folder-open.svg"))
         proj_btn.setIcon(icon)
         proj_btn.setIconSize(QSize(80, 80))

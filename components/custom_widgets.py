@@ -35,7 +35,7 @@ from components.helper_classes import MplCanvas
 class ButtonList(QWidget):
     item_selected = Signal(str)
 
-    def __init__(self):
+    def __init__(self, title: str = ""):
         super().__init__()
 
         self._buttons = {}
@@ -43,14 +43,55 @@ class ButtonList(QWidget):
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
         scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll_area.setStyleSheet("""
+            QScrollArea {
+                border: none;
+                background-color: transparent;
+            }
+        """)
 
         self.container = QWidget()
+        self.container.setStyleSheet("""
+            QWidget {
+                background-color: transparent;
+            }
+        """)
         self.layout = QVBoxLayout(self.container)
+        self.layout.setContentsMargins(10, 10, 10, 10)
         scroll_area.setWidget(self.container)
         self.layout.addStretch()
 
         outer_layout = QVBoxLayout()
-        outer_layout.addWidget(scroll_area)
+        outer_layout.setContentsMargins(0, 0, 0, 0)
+        outer_layout.setSpacing(2)
+
+        if title:
+            title_label = QLabel(title)
+            title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            title_label.setStyleSheet("""
+                QLabel {
+                    font-weight: bold;
+                    font-size: 12px;
+                    margin-bottom: 0px;
+                }
+            """)
+            outer_layout.addWidget(title_label)
+
+        # Create a rounded container for the scroll area
+        self.rounded_container = QWidget()
+        self.rounded_container.setStyleSheet("""
+            QWidget {
+                border: 1px solid #404040;
+                border-radius: 8px;
+                background-color: #2d2d2d;
+            }
+        """)
+        rounded_layout = QVBoxLayout(self.rounded_container)
+        rounded_layout.setContentsMargins(0, 0, 0, 0)
+        rounded_layout.addWidget(scroll_area)
+
+        outer_layout.addWidget(self.rounded_container)
+        outer_layout.setContentsMargins(0, 0, 0, 0)
         self.setLayout(outer_layout)
 
     def add_button(self, name: str):
@@ -80,6 +121,11 @@ class ItemCreationMenu(QWidget):
         icon_dir = Path(__file__).resolve().parent.parent / "assets" / "icons"
 
         # -- Setup each of the creation buttons -- #
+        upload_file = QPushButton("+")
+        upload_file.clicked.connect(self._upload_new_file)
+        icon = QIcon(str(icon_dir / "folder-open.svg"))
+        upload_file.setIcon(icon)
+
         graph_creation = QPushButton("+")
         graph_creation.clicked.connect(self._open_graph_dialog)
         icon = QIcon(str(icon_dir / "chart-area.svg"))
@@ -90,14 +136,43 @@ class ItemCreationMenu(QWidget):
         icon = QIcon(str(icon_dir / "file-text.svg"))
         info_creation.setIcon(icon)
 
-        layout = QFormLayout()
-        layout.addRow("New Graph: ", graph_creation)
-        layout.addRow("New Info Doc: ", info_creation)
+        # Create content layout
+        form_layout = QFormLayout()
+        form_layout.addRow("Upload Datasource: ", upload_file)
+        form_layout.addRow("New Graph: ", graph_creation)
+        form_layout.addRow("New Info Doc: ", info_creation)
+        form_layout.setContentsMargins(15, 15, 15, 15)
+        form_layout.setSpacing(10)
 
-        self.setLayout(layout)
+        # Create rounded container
+        content_widget = QWidget()
+        content_widget.setLayout(form_layout)
+        content_widget.setStyleSheet("""
+            QWidget {
+                border: 1px solid #404040;
+                border-radius: 8px;
+                background-color: #2d2d2d;
+            }
+        """)
+
+        # Create outer layout with title
+        outer_layout = QVBoxLayout()
+        outer_layout.addWidget(content_widget)
+        outer_layout.setContentsMargins(0, 0, 0, 0)
+        outer_layout.addStretch()
+
+        self.setLayout(outer_layout)
 
     def update_dataframes(self, dfs):
         self.dataframes = dict(dfs)
+
+    def _upload_new_file(self):
+        file_dialog = QFileDialog()
+        filters = "Data Files (*.csv *.json *.xml *.xlsx);;CSV Files (*.csv);;JSON Files (*.json);;XML Files (*.xml);;Excel Files (*.xlsx)"
+
+        filepath, _ = file_dialog.getOpenFileName(self, "Open CSV File", "", filters)
+
+        self.item_created.emit(["data", filepath])
 
     def _open_graph_dialog(self):
         if len(self.dataframes) < 1: # make sure there is at least one file loaded
@@ -156,7 +231,7 @@ class ItemViewer(QWidget):
         #"Pie Chart",
     ]
 
-    curr_graph = ""
+    curr_item = ""
 
     def __init__(self):
         super().__init__()
@@ -189,6 +264,11 @@ class ItemViewer(QWidget):
             self._show_doc(item_data)
 
     def _show_data(self, name: str):
+        if name == self.curr_item:
+            return
+
+        self.curr_item = name
+
         data = self.dataframes[name]
         if data is None or data.empty:
             return
@@ -209,10 +289,9 @@ class ItemViewer(QWidget):
         # add the data into the table
         for row_idx, row in enumerate(rows):
             for col_idx, value in enumerate(row):
-                if pd.isna(value):
-                    self.table.setItem(row_idx, col_idx, QTableWidgetItem("-"))
-                else:
-                    self.table.setItem(row_idx, col_idx, QTableWidgetItem(str(value)))
+                is_missing = pd.isna(value) if pd.api.types.is_scalar(value) else False
+                display_value = "-" if is_missing else str(value)
+                self.table.setItem(row_idx, col_idx, QTableWidgetItem(display_value))
 
         # set the table as the active view
         self.view_stack.setCurrentWidget(self.table)
@@ -221,16 +300,25 @@ class ItemViewer(QWidget):
         if metadata is None or not metadata:
             return
 
+        name = metadata["name"]
+
+        if name == self.curr_item:
+            return
+
+        self.curr_item = name
+
+        graph_type = metadata["type"]
+        data = metadata["data"]
+        params = metadata["params"]
+
         # resets the plot area so a fresh graph gets updated
         fig = self.graph.figure
         fig.clear()
         self.graph.ax = fig.add_subplot(111)
+        # Keep a stable plot shape so charts do not look squashed/stretched.
+        if hasattr(self.graph.ax, "set_box_aspect"):
+            self.graph.ax.set_box_aspect(0.75)
         self.graph.draw()
-
-        name = metadata["name"]
-        graph_type = metadata["type"]
-        data = metadata["data"]
-        params = metadata["params"]
 
         if graph_type in self.single_file_graphs:
             df = self.dataframes[data[0]]
