@@ -183,7 +183,7 @@ class ProjectPage(QMainWindow):
 
         # update widget dataframes
         self.item_creation_menu.update_dataframes(self.project_dataframes)
-        self.item_view.update_dataframes(self.project_dataframes)
+        self.item_view.add_dataframe(filename, data)
 
         # update source buttons menu
         self.source_menu.add_button(filename)

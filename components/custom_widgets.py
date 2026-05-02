@@ -1,6 +1,7 @@
+from importlib.metadata import metadata
 
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QPalette, QIcon
+from PySide6.QtCore import Qt, Signal, QUrl
+from PySide6.QtGui import QPalette, QIcon, QColor
 from PySide6.QtWidgets import (
     QWidget,
     QMainWindow,
@@ -22,9 +23,15 @@ from PySide6.QtWidgets import (
     QStackedWidget
 )
 
+from PySide6.QtWebEngineWidgets import QWebEngineView
+
+import plotly.express as px
+import plotly.figure_factory as ff
+
 import pandas as pd
 import seaborn as sns
 from pathlib import Path
+import tempfile
 import filecmp
 import shutil
 import json
@@ -236,11 +243,11 @@ class ItemViewer(QWidget):
     def __init__(self):
         super().__init__()
 
-        self.dataframes = {}
+        self._dataframes = {}
 
         # -- define the different item view types -- #
         self.table = QTableWidget()     # for viewing dataframes
-        self.graph = MplCanvas()       # for viewing graphs
+        self.graph = PlotlyWebEngine()       # for viewing graphs
         self.doc = QWidget()           # for viewing docs
 
         self.view_stack = QStackedWidget()
@@ -266,8 +273,9 @@ class ItemViewer(QWidget):
         layout.addWidget(self.view_container)
         self.setLayout(layout)
 
-    def update_dataframes(self, dfs):
-        self.dataframes = dict(dfs)
+    def add_dataframe(self, name: str, data: pd.DataFrame):
+        self._dataframes[name] = data
+        self.graph.add_dataframe(name, data)
 
     def show_item(self, item_type: str, item_data):
         if item_type == "data":
@@ -283,7 +291,7 @@ class ItemViewer(QWidget):
 
         self.curr_item = name
 
-        data = self.dataframes[name]
+        data = self._dataframes[name]
         if data is None or data.empty:
             return
 
@@ -314,10 +322,59 @@ class ItemViewer(QWidget):
         if metadata is None or not metadata:
             return
 
+        self.graph.update_view(metadata)
+
+        # set the graph as the active view
+        self.view_stack.setCurrentWidget(self.graph)
+
+    def _show_doc(self, metadata):
+        pass
+
+class PlotlyWebEngine(QWebEngineView):
+    _graph_inputs = {
+        "Histogram": 1,
+        "Scatter Plot": 1,
+        "Box Plot": 1,
+        "Heatmap": 1,
+        "KDE Plot": 1,
+        "Correlation Matrix": 1,
+        # "Bar Chart": 1,
+        # "Pie Chart": 1,
+    }
+
+    def __init__(self):
+        super().__init__()
+
+        self.page().setBackgroundColor(QColor(0, 0, 0, 0))
+
+        self._curr_item = ""
+        self._temp_file = ""
+        self._dataframes = {}
+
+    def add_dataframe(self, name: str, data: pd.DataFrame):
+        self._dataframes[name] = data
+
+    def update_view(self, metadata: dict):
+        html = self._generate_graph_html(metadata)
+        self._load_html(html)
+
+    def _load_html(self, html: str):
+        if html == "":
+            return
+
+        self._temp_file = tempfile.NamedTemporaryFile(suffix=".html", delete=False, mode="w", encoding="utf-8")
+        self._temp_file.write(html)
+        self._temp_file.close()
+        self.load(QUrl.fromLocalFile(self._temp_file.name))
+
+    def _generate_graph_html(self, metadata: dict):
+        if metadata is None or not metadata:
+            return ""
+
         name = metadata["name"]
 
-        if name == self.curr_item:
-            return
+        if name == self._curr_item:
+            return ""
 
         self.curr_item = name
 
@@ -326,16 +383,11 @@ class ItemViewer(QWidget):
         params = metadata["params"]
 
         # resets the plot area so a fresh graph gets updated
-        fig = self.graph.figure
-        fig.clear()
-        self.graph.ax = fig.add_subplot(111)
-        # Keep a stable plot shape so charts do not look squashed/stretched.
-        if hasattr(self.graph.ax, "set_box_aspect"):
-            self.graph.ax.set_box_aspect(0.75)
-        self.graph.draw()
+        self.setHtml("")
 
-        if graph_type in self.single_file_graphs:
-            df = self.dataframes[data[0]]
+        # graph the dataframe(s) needed for the graph
+        if self._graph_inputs[graph_type] == 1:
+            df = self._dataframes[data[0]]
         else:
             raise ValueError("Unsupported graph type")
 
@@ -343,57 +395,46 @@ class ItemViewer(QWidget):
             feature = params["feature"]
             bins = params["bins"]
 
-            self.graph.ax.hist(df[feature].dropna(), bins=bins)
-            self.graph.ax.set_title(name)
-            self.graph.ax.set_xlabel(feature)
-            self.graph.ax.set_ylabel("Frequency")
-            self.graph.draw()
+            fig = px.histogram(df, x=feature, nbins=bins, title=name)
+            fig.update_layout(template="plotly_dark")
+            return fig.to_html(include_plotlyjs=True, full_html=True)
 
         if graph_type == "Scatter Plot":
             scat_x = params["x"]
             scat_y = params["y"]
 
-            self.graph.ax.scatter(df[scat_x], df[scat_y])
-            self.graph.ax.set_title(f"{scat_x} vs. {scat_y}")
-            self.graph.ax.set_xlabel(scat_x)
-            self.graph.ax.set_ylabel(scat_y)
-            self.graph.draw()
+            fig = px.scatter(df, x=scat_x, y=scat_y, title=name)
+            fig.update_layout(template="plotly_dark")
+            return fig.to_html(include_plotlyjs=True, full_html=True)
 
         if graph_type == "Box Plot":
             feature = params
 
-            self.graph.ax.boxplot(df[feature].dropna(), vert=False)
-            self.graph.ax.set_title(f"{feature} Box Plot")
-            self.graph.draw()
+            fig = px.box(df, y=feature, title=name)
+            fig.update_layout(template="plotly_dark")
+            return fig.to_html(include_plotlyjs=True, full_html=True)
 
         if graph_type == "Heatmap":
             hm_x = params["x"]
             hm_y = params["y"]
 
-            data = df[[hm_x, hm_y]].apply(pd.to_numeric, errors='coerce').dropna()
-
-            sns.heatmap(data, annot=True, cmap='coolwarm', ax=self.graph.ax)
-            self.graph.ax.set_title(f"{hm_x} vs. {hm_y}")
-            self.graph.draw()
+            fig = px.density_heatmap(df, x=hm_x, y=hm_y, title=name)
+            fig.update_layout(template="plotly_dark")
+            return fig.to_html(include_plotlyjs=True, full_html=True)
 
         if graph_type == "KDE Plot":
             feature = params
 
-            self.graph.ax.clear()
-            df[feature].dropna().plot(kind='kde', ax=self.graph.ax)
-            self.graph.ax.set_title(f"{feature} Distribution (KDE)")
-            self.graph.draw()
+            fig = ff.create_distplot(hist_data=df, group_labels=feature, show_hist=False, show_rug=False)
+            fig.update_layout(template="plotly_dark")
+            return fig.to_html(include_plotlyjs=True, full_html=True)
 
         if graph_type == "Correlation Matrix":
-            data = df.select_dtypes(include=["number"])
-            corr = data.corr(numeric_only=True)
+            corr = df.corr()
 
-            sns.heatmap(corr, annot=True, cmap="coolwarm", ax=self.graph.ax, vmin=-1, vmax=1)
-            self.graph.ax.set_title("Correlation Matrix")
-            self.graph.draw()
+            fig = px.imshow(corr, title=name)
+            fig.update_layout(template="plotly_dark")
+            return fig.to_html(include_plotlyjs=True, full_html=True)
 
-        # set the graph as the active view
-        self.view_stack.setCurrentWidget(self.graph)
+        return ""
 
-    def _show_doc(self, metadata):
-        pass

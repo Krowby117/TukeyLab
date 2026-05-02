@@ -17,13 +17,17 @@ from PySide6.QtWidgets import (
     QTableWidget,
     QTableWidgetItem,
     QCheckBox,
-    QLineEdit
+    QLineEdit,
 )
+
+from PySide6.QtWebEngineWidgets import QWebEngineView
 
 import seaborn as sns
 import pandas as pd
 import hashlib
 import time
+
+import plotly.express as px
 
 from components.helper_classes import MplCanvas
 
@@ -71,7 +75,8 @@ class SingleFileGraph(QDialog):
         self.inputStack.addWidget(self.kde_inputs())
         self.inputStack.addWidget(self.correlation_inputs())
 
-        self.graphView = MplCanvas(self)
+        #self.graphView = MplCanvas(self)
+        self.graphView = QWebEngineView()
 
         buttonBox = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
         buttonBox.addButton(QDialogButtonBox.StandardButton.Cancel)
@@ -171,7 +176,7 @@ class SingleFileGraph(QDialog):
         self.graphView.draw()
 
     def generate_graph(self):
-        self._reset_plot_area()
+        #self._reset_plot_area()
 
         if not self._combo_has_valid_selection(self.fileCombo):
             return
@@ -184,11 +189,14 @@ class SingleFileGraph(QDialog):
 
             feature = self.hist_feature.currentText()
 
-            self.graphView.ax.hist(df[feature].dropna(), bins=self.bins.value())
-            self.graphView.ax.set_title(f"{feature} Distribution")
-            self.graphView.ax.set_xlabel(feature)
-            self.graphView.ax.set_ylabel("Frequency")
-            self.graphView.draw()
+            # self.graphView.ax.hist(df[feature].dropna(), bins=self.bins.value())
+            # self.graphView.ax.set_title(f"{feature} Distribution")
+            # self.graphView.ax.set_xlabel(feature)
+            # self.graphView.ax.set_ylabel("Frequency")
+            # self.graphView.draw()
+
+            fig = px.histogram(df, x=feature)
+            self.graphView.setHtml(fig.to_html())
 
         if self.graphType == "Scatter Plot":
             if ( not self._combo_has_valid_selection(self.scat_feature_x)

@@ -1,36 +1,61 @@
-import hashlib
-from datetime import datetime
-from pathlib import Path
+import sys
+import tempfile
+import os
+import pandas as pd
+import plotly.express as px
 
-# 1. Grab current time
-# Use isoformat() for a standardized string representation
-current_time = datetime.now().isoformat()
+from PySide6.QtCore import QUrl
+from PySide6.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QWidget
+from PySide6.QtWebEngineWidgets import QWebEngineView
 
-# 2. Hash the time
-# Hashing functions require byte-like objects, so we encode the string
-time_hash = hashlib.sha256(current_time.encode()).hexdigest()
 
-print(f"Time: {current_time}")
-print(f"Hash: {time_hash}")
+def build_html() -> str:
+    """Generate a simple Plotly scatter chart as a self-contained HTML string."""
+    df = pd.DataFrame({
+        "x": [1, 2, 3, 4, 5],
+        "y": [10, 4, 7, 2, 9],
+        "label": ["A", "B", "C", "D", "E"],
+    })
+    fig = px.scatter(df, x="x", y="y", text="label", title="QWebEngineView + Plotly Test")
+    fig.update_traces(textposition="top center", marker=dict(size=12))
+    fig.update_layout(template="plotly_dark")
+    return fig.to_html(include_plotlyjs=True, full_html=True)
 
-proj_names = ["bob", "mary", "bob_1"]
-name = "anne"
-valid: bool = False
-index: int = 0
-while not valid:
-    if index == 0:
-        check = name
-    else:
-        check = name + "_" + str(index)
 
-    if check in proj_names:
-        index += 1
-    else:
-        name = check
-        valid = True
+def load_plotly(view: QWebEngineView) -> str:
+    """Write HTML to a temp file and load it — avoids QWebEngineView's 2 MB setHtml limit."""
+    html = build_html()
+    tmp = tempfile.NamedTemporaryFile(suffix=".html", delete=False, mode="w", encoding="utf-8")
+    tmp.write(html)
+    tmp.close()
+    view.load(QUrl.fromLocalFile(tmp.name))
+    return tmp.name  # caller can delete later if desired
 
-print(name)
-print(Path(__file__).resolve().parent)
 
-from qt_material import apply_stylesheet, list_themes
-print(list_themes())
+class MainWindow(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Plotly + QWebEngineView")
+        self.resize(900, 600)
+
+        self.web = QWebEngineView()
+        self._tmp_file = load_plotly(self.web)
+
+        container = QWidget()
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self.web)
+        self.setCentralWidget(container)
+
+    def closeEvent(self, event):
+        # Clean up temp file on close
+        if os.path.exists(self._tmp_file):
+            os.remove(self._tmp_file)
+        super().closeEvent(event)
+
+
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    window = MainWindow()
+    window.show()
+    sys.exit(app.exec())
