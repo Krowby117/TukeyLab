@@ -30,7 +30,7 @@ import filecmp
 import shutil
 import json
 
-from components.custom_widgets import ButtonList, ItemCreationMenu, ItemViewer
+from components.project_widgets import ButtonList, ItemCreationMenu, ItemViewer
 
 def make_dataframe(filepath: str):
     # load the file path based on the type
