@@ -30,6 +30,8 @@ import filecmp
 import shutil
 import json
 
+from components.chatbot import ChatbotGUI
+from components.project_ai import DatasetCatalogController
 from components.project_widgets import ButtonList, ItemCreationMenu, ItemViewer
 
 def make_dataframe(filepath: str):
@@ -91,7 +93,8 @@ class ProjectPage(QMainWindow):
         self.item_creation_menu = ItemCreationMenu()
         self.item_creation_menu.item_created.connect(self._handle_new_item)
 
-        self.chat_window = QWidget()
+        self.chat_controller = DatasetCatalogController(lambda: self.project_dataframes)
+        self.chat_window = ChatbotGUI(self.chat_controller)
 
         right_layout = QVBoxLayout()
         right_layout.setContentsMargins(10, top_padding, 10, 0)
@@ -212,10 +215,10 @@ class ProjectPage(QMainWindow):
         path = data_dir / src.name
         if path.exists():  # if the file already exists
             if filecmp.cmp(src, path, shallow=False):  # and it's the same as the new file, then ignore it
-                return
+                return path.name
         else:
             shutil.copy2(src, path)  # preserves timestamps/metadata
-            return
+            return path.name
 
         stem, suffix = src.stem, src.suffix
         i = 1
@@ -223,19 +226,20 @@ class ProjectPage(QMainWindow):
             path = data_dir / f"{stem}_{i}{suffix}"
             if path.exists():
                 if filecmp.cmp(src, path, shallow=False):
-                    return
+                    return path.name
                 i += 1
                 continue
 
         shutil.copy2(src, path)  # preserves timestamps/metadata
+        return path.name
 
     def _handle_new_item(self, item_data: list):
         item_type = item_data[0]
         metadata = item_data[1]
 
         if item_type == "data":
-            self._import_datafile(metadata)
-            self._load_file(metadata)
+            imported_name = self._import_datafile(metadata)
+            self._load_file(imported_name)
         elif item_type == "graph":
             self._import_graph(metadata)
             self._load_graph(metadata)
