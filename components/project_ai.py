@@ -1,24 +1,41 @@
 from __future__ import annotations
 
 import json
-import re
+import os
 from pathlib import Path
 from typing import Callable
 
+import numpy as np
 import pandas as pd
+
+try:
+    import ollama
+except Exception:  # pragma: no cover - optional dependency
+    ollama = None
 
 
 class DatasetCatalogController:
     REFUSAL_MESSAGE = (
-        "Phase 1 assistant scope supports dataset catalog requests and graph JSON requests. "
-        "Try: 'What datasets are available?', 'Describe <dataset>', or "
-        "'Create a scatter plot for <dataset>'."
+        "I can help with project dataset exploration and EDA tasks. "
+        "Try: 'What datasets are available?', 'Describe <dataset>', "
+        "'Give me an EDA overview for <dataset>', 'Show missing values for <dataset>', "
+        "or 'What is the correlation between <col1> and <col2> in <dataset>?'. \n"
     )
 
-    def __init__(self, get_dataframes: Callable[[], dict[str, pd.DataFrame]]):
+    def __init__(
+        self,
+        get_dataframes: Callable[[], dict[str, pd.DataFrame]],
+        use_llm: bool | None = None,
+        llm_model: str | None = None,
+    ):
         self._get_dataframes = get_dataframes
+        env_use_llm = os.getenv("TUKEYLAB_USE_LLM", "1") == "1"
+        self._use_llm = env_use_llm if use_llm is None else use_llm
+        self._llm_model = llm_model or os.getenv("TUKEYLAB_LLM_MODEL", "phi")
+        if ollama is None:
+            self._use_llm = False
 
-    def process_message(self, prompt: str) -> str:
+    def process_message(self, prompt: str, history: list[dict[str, str]] | None = None) -> str:
         message = (prompt or "").strip()
         if not message:
             return "Please enter a question."
@@ -27,246 +44,166 @@ class DatasetCatalogController:
         if not dataframes:
             return "No datasets are loaded in this project yet."
 
+        if self._is_strategy_request(message):
+            dataset_name = self._match_dataset_name(message, dataframes)
+            if dataset_name is None and len(dataframes) == 1:
+                dataset_name = next(iter(dataframes.keys()))
+            return self._eda_strategy_response(dataset_name, dataframes)
+
+        if self._is_help_request(message):
+            return self._build_help_message(dataframes)
+
         if self._is_list_request(message):
             return self._build_dataset_catalog(dataframes)
 
         if self._is_graph_request(message):
-            return self._build_graph_request_payload(message, dataframes)
+            return (
+                "I am currently scoped to dataset discussion and EDA reasoning only (no graph creation). "
+                "I can still help you decide what to plot and why. "
+                "Try: 'What columns should I compare in <dataset>?' or 'What EDA checks should I run first?'."
+            )
 
-        matched = self._match_dataset_name(message, dataframes)
-        if matched:
-            return self._describe_dataset(matched, dataframes[matched])
+        if self._use_llm:
+            llm_response = self._llm_respond(message, dataframes, history or [])
+            if llm_response:
+                return llm_response
+
+        return self._process_message_deterministic(message, dataframes)
+
+    def _process_message_deterministic(self, message: str, dataframes: dict[str, pd.DataFrame]) -> str:
+        dataset_name = self._match_dataset_name(message, dataframes)
+        if dataset_name is None and len(dataframes) == 1:
+            dataset_name = next(iter(dataframes.keys()))
+
+        if self._is_strategy_request(message):
+            return self._eda_strategy_response(dataset_name, dataframes)
+
+        if self._is_describe_request(message):
+            if dataset_name:
+                return self._describe_dataset(dataset_name, dataframes[dataset_name])
+            return self._dataset_needed_message(dataframes)
+
+        if self._is_overview_request(message):
+            if dataset_name:
+                return self._eda_overview(dataset_name, dataframes[dataset_name])
+            return self._dataset_needed_message(dataframes)
+
+        if self._is_missingness_request(message):
+            if dataset_name:
+                return self._missingness_report(dataset_name, dataframes[dataset_name])
+            return self._dataset_needed_message(dataframes)
+
+        if self._is_summary_request(message):
+            if dataset_name:
+                return self._summary_stats_report(message, dataset_name, dataframes[dataset_name])
+            return self._dataset_needed_message(dataframes)
+
+        if self._is_distribution_request(message):
+            if dataset_name:
+                return self._distribution_report(message, dataset_name, dataframes[dataset_name])
+            return self._dataset_needed_message(dataframes)
+
+        if self._is_correlation_request(message):
+            if dataset_name:
+                return self._correlation_report(message, dataset_name, dataframes[dataset_name])
+            return self._dataset_needed_message(dataframes)
+
+        if dataset_name:
+            return self._describe_dataset(dataset_name, dataframes[dataset_name])
 
         return self.REFUSAL_MESSAGE
 
+    def _is_help_request(self, message: str) -> bool:
+        lower = message.lower()
+        return any(k in lower for k in ("help", "what can you do", "how should i", "where do i start"))
+
     def _is_list_request(self, message: str) -> bool:
         lower = message.lower()
-        checks = (
-            "what datasets",
-            "which datasets",
-            "list datasets",
-            "available datasets",
-            "data sources",
-            "what files",
+        return any(
+            text in lower
+            for text in (
+                "what datasets",
+                "which datasets",
+                "list datasets",
+                "available datasets",
+                "data sources",
+                "what files",
+                "tell me about the datasets",
+                "datasets i have loaded",
+                "datasets loaded",
+            )
         )
-        return any(text in lower for text in checks)
+
+    def _is_describe_request(self, message: str) -> bool:
+        lower = message.lower()
+        return any(k in lower for k in ("describe", "about dataset", "columns", "schema", "dtypes"))
 
     def _is_graph_request(self, message: str) -> bool:
         lower = message.lower()
-        checks = (
-            "create graph",
-            "create a graph",
-            "make graph",
-            "make a graph",
-            "create chart",
-            "create a chart",
-            "make chart",
-            "make a chart",
-            "plot",
-            "scatter",
-            "histogram",
-            "line chart",
-            "bar chart",
-            "box plot",
-            "heatmap",
-            "violin",
-            "pie chart",
-            "pie graph",
-            "pie",
-            "funnel",
-            "sunburst",
-            "treemap",
-            "bubble chart",
-            "area chart",
+        return any(
+            k in lower
+            for k in (
+                "create graph",
+                "create a graph",
+                "make graph",
+                "make a graph",
+                "plot",
+                "chart",
+                "scatter",
+                "histogram",
+                "bar chart",
+                "line chart",
+                "heatmap",
+                "box plot",
+                "violin",
+                "pie",
+            )
         )
-        return any(text in lower for text in checks)
 
-    def _detect_chart_type(self, lower: str) -> str:
-        if "hist" in lower:
-            return "histogram"
-        elif "violin" in lower:
-            return "violin"
-        elif "box" in lower:
-            return "box"
-        elif "heat" in lower or "density" in lower:
-            return "heatmap"
-        elif "funnel" in lower:
-            return "funnel"
-        elif "sunburst" in lower:
-            return "sunburst"
-        elif "treemap" in lower:
-            return "treemap"
-        elif "bubble" in lower:
-            return "bubble"
-        elif "area" in lower:
-            return "area"
-        elif "pie" in lower or "donut" in lower or "doughnut" in lower:
-            return "pie"
-        elif "line" in lower:
-            return "line"
-        elif any(w in lower for w in ("bar", "count", "total", "sum", "each", "per", "breakdown")):
-            return "bar"
-        else:
-            return "scatter"
+    def _is_overview_request(self, message: str) -> bool:
+        lower = message.lower()
+        return any(k in lower for k in ("eda overview", "overview", "quick summary", "profile dataset"))
 
-    def _extract_columns_from_prompt(
-        self, message: str, all_cols: list[str], numeric_cols: list[str]
-    ) -> dict[str, str | list[str] | None]:
-        """Extract specific column assignments from a user prompt.
+    def _is_missingness_request(self, message: str) -> bool:
+        lower = message.lower()
+        return any(k in lower for k in ("missing", "null", "na values", "empty values"))
 
-        Returns: {"x": col_name, "y": col_name, "color": col_name}
-        Falls back to first available columns when not specified.
-        """
-        import re
+    def _is_summary_request(self, message: str) -> bool:
+        lower = message.lower()
+        return any(k in lower for k in ("summary stats", "statistics", "mean", "median", "std", "describe()"))
 
-        lower_msg = message.lower()
-        lower_col_map = {col.lower(): col for col in all_cols}
+    def _is_distribution_request(self, message: str) -> bool:
+        lower = message.lower()
+        return any(k in lower for k in ("distribution", "value counts", "top values", "frequency"))
 
-        # Strip "from <dataset>" fragments so filenames don't interfere
-        clean_msg = re.sub(r'\bfrom\s+\S+', '', lower_msg).strip()
+    def _is_correlation_request(self, message: str) -> bool:
+        lower = message.lower()
+        return any(k in lower for k in ("correlation", "corr", "relationship", "compare"))
 
-        # --- Full-text scan: find all column names present in the prompt in order ---
-        # Sort by length descending so longest (most specific) columns match first
-        found_in_order: list[str] = []
-        remaining = clean_msg
-        for col_lower in sorted(lower_col_map.keys(), key=len, reverse=True):
-            if col_lower in remaining:
-                found_in_order.append(lower_col_map[col_lower])
-                remaining = remaining.replace(col_lower, " " * len(col_lower))
-
-        x_col: str | None = None
-        y_col: str | None = None
-        color_col: str | None = None
-
-        # --- "X vs Y" ordering: left side = x, right side = y ---
-        for sep in [" vs ", " v ", " against ", " versus "]:
-            if sep in clean_msg:
-                left_frag, right_frag = clean_msg.split(sep, 1)
-                # Walk found_in_order in document order and use positional split
-                left_set = {lower_col_map[lc] for lc in lower_col_map if lc in left_frag}
-                right_set = {lower_col_map[lc] for lc in lower_col_map if lc in right_frag}
-                # Assign first discovered in each side
-                for col in found_in_order:
-                    if col in left_set and x_col is None:
-                        x_col = col
-                    elif col in right_set and y_col is None:
-                        y_col = col
-                break
-
-        # --- "of X" for single-column charts (histogram of tempo) ---
-        if x_col is None and " of " in clean_msg:
-            for part in clean_msg.split(" of ")[1:]:
-                part_clean = part.split("from")[0].strip()
-                for col_lower in sorted(lower_col_map.keys(), key=len, reverse=True):
-                    if col_lower in part_clean:
-                        x_col = lower_col_map[col_lower]
-                        break
-                if x_col:
-                    break
-
-        # --- Fall back to document order if vs-pattern not found ---
-        if x_col is None and len(found_in_order) >= 1:
-            x_col = found_in_order[0]
-        if y_col is None and len(found_in_order) >= 2:
-            y_col = found_in_order[1]
-
-        # --- "color by Z" ---
-        for phrase in [" color by ", " colour by ", " colored by ", " coloured by "]:
-            if phrase in lower_msg:
-                after = lower_msg.split(phrase)[-1].split()[0]
-                for lc, orig in lower_col_map.items():
-                    if after in lc or lc in after:
-                        color_col = orig
-                        break
-
-        # --- Fallback to first numeric/available columns ---
-        if x_col is None and numeric_cols:
-            x_col = numeric_cols[0]
-        if y_col is None and len(numeric_cols) > 1:
-            y_col = numeric_cols[1]
-        elif y_col is None and len(all_cols) > 1:
-            y_col = all_cols[1]
-
-        return {"x": x_col, "y": y_col, "color": color_col}
-
-    def _check_for_invalid_columns(self, message: str, available_cols: list[str]) -> str | None:
-        lower_msg = message.lower()
-        lower_cols = [col.lower() for col in available_cols]
-
-        # Look for patterns like "column_name" that aren't in the dataset
-        words = lower_msg.split()
-        for word in words:
-            if word not in ["a", "the", "of", "in", "from", "to", "vs", "and", "or", "by", "with"]:
-                if word not in lower_cols and any(c.isalpha() for c in word):
-                    # Might be a column name the user mentioned
-                    # Check if it's close to any available column
-                    if not any(word in col or col in word for col in lower_cols):
-                        # Check if the user explicitly said a column name
-                        if any(phrase in lower_msg for phrase in [f"column {word}", f"{word} column", f"{word} from", f"{word} vs"]):
-                            return f"Column '{word}' not found. Available columns: {', '.join(sorted(available_cols))}"
-
-        return None
-
-    def _validate_mentioned_columns(self, message: str, available_cols: list[str]) -> str | None:
-        lower_msg = message.lower()
-        lower_cols = [col.lower() for col in available_cols]
-
-        # Words that are never column names — chart keywords, prepositions, common words
-        skip_words = {
-            "a", "the", "from", "in", "on", "of", "to", "for", "and", "or", "by", "with",
-            "plot", "scatter", "histogram", "chart", "graph", "create", "make", "show",
-            "vs", "v", "between", "comparing", "showing", "using", "dataset", "file",
-            "csv", "json", "xlsx", "line", "bar", "box", "pie", "area", "violin",
-            "heatmap", "bubble", "funnel", "sunburst", "treemap", "density",
-            "each", "total", "sum", "count", "per", "breakdown", "distribution",
-        }
-
-        potential_cols: set[str] = set()
-
-        # "X vs Y" or "X v Y" — both X and Y are potential column names
-        for sep in [" vs ", " v ", " against ", " versus "]:
-            if sep in lower_msg:
-                parts = lower_msg.split(sep)
-                for part in parts:
-                    words = part.strip().split()
-                    for w in reversed(words):
-                        cleaned = w.rstrip(".,;:()[]").split("/")[-1]
-                        if (cleaned and cleaned not in skip_words and len(cleaned) > 1
-                                and not any(cleaned.endswith(ext) for ext in [".csv", ".json", ".xlsx"])):
-                            potential_cols.add(cleaned)
-                            break
-
-        # "of X" — only the part AFTER "of" is a column name (e.g. "histogram of tempo")
-        if " of " in lower_msg:
-            for part in lower_msg.split(" of ")[1:]:  # skip left side — it's chart type or preposition
-                for w in part.strip().split():
-                    cleaned = w.rstrip(".,;:()[]").split("/")[-1]
-                    if (cleaned and cleaned not in skip_words and len(cleaned) > 1
-                            and not any(cleaned.endswith(ext) for ext in [".csv", ".json", ".xlsx"])):
-                        potential_cols.add(cleaned)
-                        break
-
-        # Validate each potential column against available columns
-        for potential_col in potential_cols:
-            if potential_col not in lower_cols:
-                close = [col for col in available_cols
-                         if potential_col in col.lower() or col.lower() in potential_col]
-                if not close:
-                    return (
-                        f"Column '{potential_col}' not found in dataset. "
-                        f"Available columns: {', '.join(sorted(available_cols[:10]))}..."
-                    )
-
-        return None
+    def _is_strategy_request(self, message: str) -> bool:
+        lower = message.lower()
+        return any(
+            k in lower
+            for k in (
+                "what eda steps",
+                "eda steps should i take",
+                "what should i do next",
+                "help me compare",
+                "good way to compare",
+                "what should i compare",
+                "what next",
+            )
+        )
 
     def _match_dataset_name(self, message: str, dataframes: dict[str, pd.DataFrame]) -> str | None:
         lower = message.lower()
 
-        # Exact filename match first.
+        # Exact match first (full filename appears in message)
         for filename in dataframes:
             if filename.lower() in lower:
                 return filename
 
+        # Stem match (filename without extension)
         stem_matches = []
         for filename in dataframes:
             stem = Path(filename).stem.lower()
@@ -275,316 +212,240 @@ class DatasetCatalogController:
 
         if len(stem_matches) == 1:
             return stem_matches[0]
+        if len(stem_matches) > 1:
+            # If multiple stem matches, try partial keyword matching
+            best_match = self._find_best_partial_match(message, stem_matches)
+            if best_match:
+                return best_match
+
+        # Partial keyword matching (individual keywords from message match parts of filename)
+        partial_matches = self._find_best_partial_match(message, list(dataframes.keys()))
+        if partial_matches:
+            return partial_matches
 
         return None
+
+    def _find_best_partial_match(self, message: str, filenames: list[str]) -> str | None:
+        """Find the best matching filename based on keyword overlap scoring."""
+        lower_msg = message.lower()
+        # Extract keywords from message (remove common words and short tokens)
+        keywords = [
+            token.strip(".,!?;:") for token in lower_msg.split()
+            if len(token.strip(".,!?;:")) > 2 and token.strip(".,!?;:") not in {
+                "the", "and", "for", "with", "from", "that", "this", "can", "have",
+                "data", "dataset", "csv", "file", "show", "give", "tell", "what",
+                "which", "where", "how", "why", "when", "should", "would", "could"
+            }
+        ]
+
+        if not keywords:
+            return None
+
+        scored_matches: list[tuple[str, int]] = []
+        for filename in filenames:
+            filename_lower = filename.lower()
+            stem = Path(filename).stem.lower()
+            full_name = (stem + " " + filename_lower).lower()
+
+            score = 0
+            for keyword in keywords:
+                if keyword in full_name:
+                    score += len(keyword)  # Longer keyword matches score higher
+                    if keyword in stem:
+                        score += 2  # Boost if keyword is in the stem
+
+            if score > 0:
+                scored_matches.append((filename, score))
+
+        if not scored_matches:
+            return None
+
+        # Return the highest-scoring match
+        scored_matches.sort(key=lambda x: x[1], reverse=True)
+        return scored_matches[0][0]
+
+    def _dataset_needed_message(self, dataframes: dict[str, pd.DataFrame]) -> str:
+        names = ", ".join(sorted(dataframes.keys()))
+        return (
+            "Please include a dataset name so I can run that EDA task. "
+            f"Available datasets: {names}"
+        )
+
+    def _build_help_message(self, dataframes: dict[str, pd.DataFrame]) -> str:
+        examples = [
+            "- What datasets are available?",
+            "- Describe spotify_analysis_dataset.csv",
+            "- Give me an EDA overview for dirty_cafe_sales.csv",
+            "- Show missing values in dirty_cafe_sales.csv",
+            "- Summary statistics for spotify_analysis_dataset.csv",
+            "- Correlation between tempo and valence in spotify_analysis_dataset.csv",
+            "- Distribution of genre in spotify_analysis_dataset.csv",
+        ]
+        return (
+            "I support iterative, dataset-grounded EDA conversations so you can reason through patterns and refine your understanding.\n"
+            "I can help with:\n"
+            "- dataset inventory and schema checks\n"
+            "- EDA overviews\n"
+            "- missingness analysis\n"
+            "- summary statistics\n"
+            "- basic distribution and correlation checks\n\n"
+            "Prompt ideas:\n"
+            + "\n".join(examples)
+            + "\n\n"
+            + f"Loaded datasets: {', '.join(sorted(dataframes.keys()))}"
+        )
+
+    def _eda_strategy_response(self, dataset_name: str | None, dataframes: dict[str, pd.DataFrame]) -> str:
+        if dataset_name is None:
+            return (
+                "Great question. A practical next EDA sequence is: (1) dataset overview, (2) missingness check, "
+                "(3) summary stats, (4) distributions, (5) pairwise correlations for numeric features, and "
+                "(6) inspect surprising outliers. Include a dataset name and I can tailor this to your data.\n"
+                f"Loaded datasets: {', '.join(sorted(dataframes.keys()))}"
+            )
+
+        df = dataframes[dataset_name]
+        numeric_cols = list(df.select_dtypes(include="number").columns)
+        cat_cols = list(df.select_dtypes(exclude="number").columns)
+        pair_hint = ""
+        if len(numeric_cols) >= 2:
+            pair_hint = f"Start by comparing {numeric_cols[0]} vs {numeric_cols[1]} and checking their correlation."
+
+        return (
+            f"EDA next steps for {dataset_name}:\n"
+            "1) Check shape, dtypes, and obvious quality issues.\n"
+            "2) Review missing values by column and decide imputation/drop rules.\n"
+            "3) Run summary stats on numeric features (mean/median/std/min/max).\n"
+            "4) Inspect distributions (numeric) and value counts (categorical).\n"
+            "5) Compare related features and investigate outliers.\n"
+            f"Numeric columns: {len(numeric_cols)}, Categorical columns: {len(cat_cols)}. {pair_hint}"
+        )
+
+    def _llm_respond(
+        self,
+        message: str,
+        dataframes: dict[str, pd.DataFrame],
+        history: list[dict[str, str]],
+    ) -> str | None:
+        if ollama is None:
+            return None
+
+        context = self._build_dataset_context(dataframes)
+        system_prompt = (
+            "You are a project-scoped data assistant.\n"
+            "Only answer questions about the provided datasets and EDA tasks.\n"
+            "Never answer with external/world knowledge.\n"
+            "If the user asks outside scope, set in_scope to false and provide a short refusal.\n"
+            "Return valid JSON only with keys: in_scope (boolean), answer (string)."
+        )
+
+        messages = [{"role": "system", "content": system_prompt}]
+        messages.extend(self._history_to_messages(history))
+        messages.append(
+            {
+                "role": "user",
+                "content": (
+                    f"Dataset context:\n{context}\n\n"
+                    f"User question:\n{message}\n\n"
+                    "Remember: answer only from provided datasets and EDA scope."
+                ),
+            }
+        )
+
+        try:
+            response = ollama.chat(model=self._llm_model, messages=messages)
+        except Exception:
+            return None
+
+        content = response.get("message", {}).get("content", "").strip()
+        if not content:
+            return None
+
+        parsed = self._parse_llm_json(content)
+        if parsed is None:
+            return None
+
+        if not parsed.get("in_scope", False):
+            return self.REFUSAL_MESSAGE
+
+        answer = str(parsed.get("answer", "")).strip()
+        return answer or None
+
+    def _parse_llm_json(self, content: str) -> dict | None:
+        try:
+            return json.loads(content)
+        except Exception:
+            pass
+
+        start = content.find("{")
+        end = content.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            snippet = content[start : end + 1]
+            try:
+                return json.loads(snippet)
+            except Exception:
+                return None
+        return None
+
+    def _history_to_messages(self, history: list[dict[str, str]]) -> list[dict[str, str]]:
+        if not history:
+            return []
+
+        trimmed = history[-12:]
+        out: list[dict[str, str]] = []
+        for msg in trimmed:
+            role = msg.get("role", "").strip().lower()
+            if role not in {"user", "assistant"}:
+                continue
+            content = str(msg.get("content", "")).strip()
+            if not content:
+                continue
+            out.append({"role": role, "content": content})
+        return out
+
+    def _build_dataset_context(self, dataframes: dict[str, pd.DataFrame]) -> str:
+        lines: list[str] = []
+        for name, df in sorted(dataframes.items()):
+            numeric_cols = list(df.select_dtypes(include="number").columns)
+            non_numeric_cols = list(df.select_dtypes(exclude="number").columns)
+            missing = df.isna().sum().sort_values(ascending=False)
+            missing = missing[missing > 0]
+
+            lines.append(f"Dataset: {name}")
+            lines.append(f"- Shape: {len(df)} rows x {len(df.columns)} columns")
+            lines.append(f"- Columns: {', '.join([str(c) for c in list(df.columns)[:25]])}")
+            lines.append(f"- Numeric columns ({len(numeric_cols)}): {', '.join([str(c) for c in numeric_cols[:12]])}")
+            lines.append(f"- Non-numeric columns ({len(non_numeric_cols)}): {', '.join([str(c) for c in non_numeric_cols[:12]])}")
+
+            if not missing.empty:
+                top_missing = ", ".join([f"{idx}:{int(val)}" for idx, val in missing.head(6).items()])
+                lines.append(f"- Missing (top): {top_missing}")
+            else:
+                lines.append("- Missing: none")
+
+            if numeric_cols:
+                stats_df = df[numeric_cols[:6]].describe().transpose()
+                for col in stats_df.index:
+                    row = stats_df.loc[col]
+                    lines.append(
+                        f"  - {col}: mean={row['mean']:.3f}, std={row['std']:.3f}, min={row['min']:.3f}, max={row['max']:.3f}"
+                    )
+
+            lines.append("")
+
+        return "\n".join(lines).strip()
 
     def _build_dataset_catalog(self, dataframes: dict[str, pd.DataFrame]) -> str:
         lines = ["Available project datasets:"]
         for name, df in sorted(dataframes.items()):
             lines.append(f"- {name}: {len(df)} rows, {len(df.columns)} columns")
-        lines.append("Ask 'Describe <dataset name>' for columns and dtypes.")
+        lines.append("Ask 'Describe <dataset>' or 'Give me an EDA overview for <dataset>'.")
         return "\n".join(lines)
-
-    def _build_graph_request_payload(self, message: str, dataframes: dict[str, pd.DataFrame]) -> str:
-        dataset_name = self._match_dataset_name(message, dataframes)
-        if dataset_name is None and len(dataframes) == 1:
-            dataset_name = next(iter(dataframes.keys()))
-
-        if dataset_name is None:
-            return self._json_response(
-                {
-                    "schema_version": "1.0",
-                    "action": "error",
-                    "message": "Graph request needs a specific dataset.",
-                    "error": {
-                        "code": "dataset_ambiguous",
-                        "detail": "Please include a dataset filename in your prompt.",
-                        "available_datasets": sorted(dataframes.keys()),
-                    },
-                }
-            )
-
-        if dataset_name not in dataframes:
-            return self._json_response(
-                {
-                    "schema_version": "1.0",
-                    "action": "error",
-                    "message": "Dataset not found.",
-                    "error": {
-                        "code": "dataset_not_found",
-                        "detail": f"Dataset '{dataset_name}' does not exist.",
-                        "available_datasets": sorted(dataframes.keys()),
-                    },
-                }
-            )
-
-        df = dataframes[dataset_name]
-        numeric_cols = [str(col) for col in df.select_dtypes(include="number").columns]
-        all_cols = [str(col) for col in df.columns]
-        lower = message.lower()
-
-        chart_type = self._detect_chart_type(lower)
-
-        # Validate columns mentioned explicitly in the prompt
-        column_validation_error = self._validate_mentioned_columns(message, all_cols)
-        if column_validation_error:
-            return self._json_response(
-                {
-                    "schema_version": "1.0",
-                    "action": "error",
-                    "message": column_validation_error,
-                    "error": {
-                        "code": "invalid_columns",
-                        "detail": column_validation_error,
-                        "dataset": dataset_name,
-                        "available_columns": sorted(all_cols),
-                    },
-                }
-            )
-
-        # Extract which specific columns to use
-        col_assignment = self._extract_columns_from_prompt(message, all_cols, numeric_cols)
-
-        figure_json, error = self._build_figure_json(
-            chart_type=chart_type,
-            dataset_name=dataset_name,
-            df=df,
-            all_cols=all_cols,
-            numeric_cols=numeric_cols,
-            col_assignment=col_assignment,
-        )
-        if error is not None:
-            return self._json_response(
-                {
-                    "schema_version": "1.0",
-                    "action": "error",
-                    "message": "Could not build a Plotly figure JSON for this request.",
-                    "error": {
-                        "code": "figure_build_failed",
-                        "detail": error,
-                        "dataset": dataset_name,
-                        "available_columns": sorted(all_cols),
-                        "numeric_columns": sorted(numeric_cols),
-                    },
-                }
-            )
-
-        payload = {
-            "schema_version": "1.0",
-            "action": "create_graph",
-            "message": f"Generated {chart_type} Plotly figure JSON from {dataset_name}.",
-            "graph_request": {
-                "name": f"AI {chart_type.title()} - {Path(dataset_name).stem}",
-                "sources": [dataset_name],
-                "intent": {
-                    "chart_type": chart_type,
-                    "columns": col_assignment,
-                    "prompt": message,
-                },
-                "figure_json": figure_json,
-            },
-        }
-        return self._json_response(payload)
-
-    def _build_figure_json(
-        self,
-        chart_type: str,
-        dataset_name: str,
-        df: pd.DataFrame,
-        all_cols: list[str],
-        numeric_cols: list[str],
-        col_assignment: dict,
-    ) -> tuple[dict | None, str | None]:
-        title = f"{chart_type.title()} from {dataset_name}"
-        sample = df.head(2000)
-
-        x_col = col_assignment.get("x")
-        y_col = col_assignment.get("y")
-
-        if chart_type == "histogram":
-            if x_col is None:
-                return None, "Need at least one numeric column for a histogram."
-            return (
-                {
-                    "data": [{"type": "histogram", "x": self._series_values(sample[x_col]), "name": x_col}],
-                    "layout": {
-                        "template": "plotly_dark",
-                        "title": {"text": title},
-                        "xaxis": {"title": {"text": x_col}},
-                        "yaxis": {"title": {"text": "Count"}},
-                    },
-                },
-                None,
-            )
-
-        if chart_type in {"scatter", "line", "bubble", "area"}:
-            if x_col is None or y_col is None:
-                return None, f"Need at least two columns for a {chart_type} chart."
-            mode = {"line": "lines", "area": "lines", "scatter": "markers", "bubble": "markers"}.get(chart_type, "markers")
-            trace: dict = {
-                "type": "scatter",
-                "mode": mode,
-                "x": self._series_values(sample[x_col]),
-                "y": self._series_values(sample[y_col]),
-                "name": f"{y_col} vs {x_col}",
-            }
-            if chart_type == "area":
-                trace["fill"] = "tozeroy"
-            layout: dict = {
-                "template": "plotly_dark",
-                "title": {"text": title},
-                "xaxis": {"title": {"text": x_col}},
-                "yaxis": {"title": {"text": y_col}},
-            }
-            return ({"data": [trace], "layout": layout}, None)
-
-        if chart_type == "bar":
-            if x_col is None or y_col is None:
-                return None, "Need at least two columns for a bar chart."
-            return (
-                {
-                    "data": [{"type": "bar", "x": self._series_values(sample[x_col]), "y": self._series_values(sample[y_col]), "name": f"{y_col} by {x_col}"}],
-                    "layout": {
-                        "template": "plotly_dark",
-                        "title": {"text": title},
-                        "xaxis": {"title": {"text": x_col}},
-                        "yaxis": {"title": {"text": y_col}},
-                    },
-                },
-                None,
-            )
-
-        if chart_type == "box":
-            if x_col is None:
-                return None, "Need at least one numeric column for a box plot."
-            return (
-                {
-                    "data": [{"type": "box", "y": self._series_values(sample[x_col]), "name": x_col}],
-                    "layout": {
-                        "template": "plotly_dark",
-                        "title": {"text": title},
-                        "yaxis": {"title": {"text": x_col}},
-                    },
-                },
-                None,
-            )
-
-        if chart_type == "violin":
-            if x_col is None:
-                return None, "Need at least one numeric column for a violin plot."
-            return (
-                {
-                    "data": [{"type": "violin", "y": self._series_values(sample[x_col]), "name": x_col, "box": {"visible": True}, "meanline": {"visible": True}}],
-                    "layout": {
-                        "template": "plotly_dark",
-                        "title": {"text": title},
-                        "yaxis": {"title": {"text": x_col}},
-                    },
-                },
-                None,
-            )
-
-        if chart_type == "heatmap":
-            if x_col is None or y_col is None:
-                return None, "Need at least two numeric columns for a heatmap."
-            return (
-                {
-                    "data": [{"type": "histogram2d", "x": self._series_values(sample[x_col]), "y": self._series_values(sample[y_col])}],
-                    "layout": {
-                        "template": "plotly_dark",
-                        "title": {"text": title},
-                        "xaxis": {"title": {"text": x_col}},
-                        "yaxis": {"title": {"text": y_col}},
-                    },
-                },
-                None,
-            )
-
-        if chart_type == "pie":
-            if x_col is None:
-                return None, "Need a label column for a pie chart."
-            label_values = self._series_values(sample[x_col])
-            if y_col:
-                value_values = self._series_values(sample[y_col])
-            else:
-                # Auto-count labels
-                counts = sample[x_col].value_counts()
-                label_values = list(counts.index.astype(str))
-                value_values = list(counts.values)
-            return (
-                {
-                    "data": [{"type": "pie", "labels": label_values, "values": value_values, "name": x_col}],
-                    "layout": {"template": "plotly_dark", "title": {"text": title}},
-                },
-                None,
-            )
-
-        if chart_type == "funnel":
-            if x_col is None or y_col is None:
-                return None, "Need two columns for a funnel chart."
-            return (
-                {
-                    "data": [{"type": "funnel", "x": self._series_values(sample[y_col]), "y": self._series_values(sample[x_col])}],
-                    "layout": {"template": "plotly_dark", "title": {"text": title}},
-                },
-                None,
-            )
-
-        if chart_type in {"sunburst", "treemap"}:
-            if x_col is None:
-                return None, f"Need a label column for a {chart_type} chart."
-            counts = sample[x_col].value_counts().head(50)
-            return (
-                {
-                    "data": [{"type": chart_type, "labels": list(counts.index.astype(str)), "values": list(counts.values), "parents": [""] * len(counts)}],
-                    "layout": {"template": "plotly_dark", "title": {"text": title}},
-                },
-                None,
-            )
-
-        # Generic fallback: scatter for any unknown type
-        if x_col and y_col:
-            return (
-                {
-                    "data": [{"type": "scatter", "mode": "markers", "x": self._series_values(sample[x_col]), "y": self._series_values(sample[y_col]), "name": f"{y_col} vs {x_col}"}],
-                    "layout": {
-                        "template": "plotly_dark",
-                        "title": {"text": f"{title} (rendered as scatter)"},
-                        "xaxis": {"title": {"text": x_col}},
-                        "yaxis": {"title": {"text": y_col}},
-                    },
-                },
-                None,
-            )
-
-        return None, f"Could not determine how to build a '{chart_type}' chart with the available columns."
-
-    def _json_response(self, payload: dict) -> str:
-        return json.dumps(payload, indent=2)
-
-    def _series_values(self, series: pd.Series) -> list:
-        return [self._normalize_value(value) for value in series.tolist()]
-
-    def _normalize_value(self, value):
-        if pd.isna(value):
-            return None
-
-        if hasattr(value, "isoformat") and not isinstance(value, (int, float, str, bool)):
-            try:
-                return value.isoformat()
-            except Exception:
-                pass
-
-        if hasattr(value, "item"):
-            try:
-                return value.item()
-            except Exception:
-                pass
-
-        return value
 
     def _describe_dataset(self, name: str, df: pd.DataFrame) -> str:
         columns = [str(col) for col in df.columns]
+        numeric_cols = list(df.select_dtypes(include="number").columns)
+        categorical_cols = list(df.select_dtypes(exclude="number").columns)
         dtype_lines = [f"- {col}: {dtype}" for col, dtype in df.dtypes.items()]
 
         column_preview = ", ".join(columns[:20])
@@ -595,11 +456,169 @@ class DatasetCatalogController:
             f"Dataset: {name}",
             f"Rows: {len(df)}",
             f"Columns: {len(columns)}",
+            f"Numeric columns: {len(numeric_cols)}",
+            f"Non-numeric columns: {len(categorical_cols)}",
             f"Column names: {column_preview}",
             "Column dtypes:",
             *dtype_lines,
+            "",
+            "Suggested next step: Ask for an 'EDA overview' or 'missing values' for this dataset.",
         ]
         return "\n".join(response_lines)
 
+    def _eda_overview(self, name: str, df: pd.DataFrame) -> str:
+        numeric_cols = list(df.select_dtypes(include="number").columns)
+        categorical_cols = list(df.select_dtypes(exclude="number").columns)
+        missing_total = int(df.isna().sum().sum())
+        duplicate_rows = int(df.duplicated().sum())
 
+        lines = [
+            f"EDA overview for {name}:",
+            f"- Shape: {df.shape[0]} rows x {df.shape[1]} columns",
+            f"- Numeric columns: {len(numeric_cols)}",
+            f"- Non-numeric columns: {len(categorical_cols)}",
+            f"- Missing values (total cells): {missing_total}",
+            f"- Duplicate rows: {duplicate_rows}",
+        ]
 
+        if numeric_cols:
+            num_preview = ", ".join([str(c) for c in numeric_cols[:8]])
+            lines.append(f"- Numeric preview columns: {num_preview}")
+
+        if categorical_cols:
+            cat_preview = ", ".join([str(c) for c in categorical_cols[:8]])
+            lines.append(f"- Categorical preview columns: {cat_preview}")
+
+        lines.extend(
+            [
+                "",
+                "Try next:",
+                "- 'Show missing values in this dataset'",
+                "- 'Summary statistics for this dataset'",
+                "- 'Correlation in this dataset'",
+            ]
+        )
+
+        return "\n".join(lines)
+
+    def _missingness_report(self, name: str, df: pd.DataFrame) -> str:
+        missing = df.isna().sum()
+        missing = missing[missing > 0].sort_values(ascending=False)
+
+        if missing.empty:
+            return f"Missingness report for {name}: no missing values found."
+
+        total_rows = len(df)
+        lines = [f"Missingness report for {name} (top columns):"]
+        for col, cnt in missing.head(15).items():
+            pct = (float(cnt) / total_rows) * 100 if total_rows else 0.0
+            lines.append(f"- {col}: {int(cnt)} missing ({pct:.2f}%)")
+
+        if len(missing) > 15:
+            lines.append(f"- ... and {len(missing) - 15} more columns with missing data")
+
+        return "\n".join(lines)
+
+    def _summary_stats_report(self, message: str, name: str, df: pd.DataFrame) -> str:
+        numeric_df = df.select_dtypes(include="number")
+        if numeric_df.empty:
+            return f"Summary statistics for {name}: no numeric columns available."
+
+        selected_cols = self._match_columns_in_prompt(message, list(numeric_df.columns))
+        if selected_cols:
+            numeric_df = numeric_df[selected_cols]
+
+        desc = numeric_df.describe().transpose()
+        lines = [f"Summary statistics for {name}:"]
+        for col in desc.index[:10]:
+            row = desc.loc[col]
+            lines.append(
+                f"- {col}: mean={row['mean']:.3f}, median={numeric_df[col].median():.3f}, "
+                f"std={row['std']:.3f}, min={row['min']:.3f}, max={row['max']:.3f}"
+            )
+
+        if len(desc.index) > 10:
+            lines.append(f"- ... and {len(desc.index) - 10} more numeric columns")
+
+        return "\n".join(lines)
+
+    def _distribution_report(self, message: str, name: str, df: pd.DataFrame) -> str:
+        col = self._pick_best_column_from_prompt(message, list(df.columns))
+        if col is None:
+            return f"Distribution request for {name}: could not determine a column name from your prompt."
+
+        s = df[col]
+        if pd.api.types.is_numeric_dtype(s):
+            clean = s.dropna()
+            if clean.empty:
+                return f"Distribution of {col} in {name}: column has only missing values."
+            q1 = clean.quantile(0.25)
+            q2 = clean.quantile(0.50)
+            q3 = clean.quantile(0.75)
+            return (
+                f"Distribution of {col} in {name}:\n"
+                f"- count={int(clean.shape[0])}\n"
+                f"- mean={clean.mean():.3f}\n"
+                f"- std={clean.std():.3f}\n"
+                f"- min={clean.min():.3f}, q1={q1:.3f}, median={q2:.3f}, q3={q3:.3f}, max={clean.max():.3f}"
+            )
+
+        vc = s.astype(str).value_counts(dropna=False)
+        lines = [f"Distribution of {col} in {name} (top categories):"]
+        for label, cnt in vc.head(12).items():
+            lines.append(f"- {label}: {int(cnt)}")
+        if len(vc) > 12:
+            lines.append(f"- ... and {len(vc) - 12} more categories")
+        return "\n".join(lines)
+
+    def _correlation_report(self, message: str, name: str, df: pd.DataFrame) -> str:
+        numeric_df = df.select_dtypes(include="number")
+        if numeric_df.shape[1] < 2:
+            return f"Correlation analysis for {name}: need at least two numeric columns."
+
+        matched_cols = self._match_columns_in_prompt(message, list(numeric_df.columns))
+        if len(matched_cols) >= 2:
+            c1, c2 = matched_cols[0], matched_cols[1]
+            corr_val = numeric_df[c1].corr(numeric_df[c2])
+            if pd.isna(corr_val):
+                return f"Correlation between {c1} and {c2} in {name} is undefined (insufficient paired values)."
+            return f"Correlation between {c1} and {c2} in {name}: {corr_val:.4f}"
+
+        corr = numeric_df.corr().abs()
+        mask = corr.where(~np.tril(np.ones(corr.shape)).astype(bool))
+        pairs = mask.stack().sort_values(ascending=False)
+
+        if pairs.empty:
+            return f"Correlation analysis for {name}: no valid numeric pairs found."
+
+        lines = [f"Top absolute correlations in {name}:"]
+        for (c1, c2), val in pairs.head(10).items():
+            lines.append(f"- {c1} vs {c2}: {val:.4f}")
+
+        return "\n".join(lines)
+
+    def _match_columns_in_prompt(self, message: str, columns: list[str]) -> list[str]:
+        lower_msg = message.lower()
+        matches: list[str] = []
+        for col in sorted(columns, key=len, reverse=True):
+            if str(col).lower() in lower_msg:
+                matches.append(str(col))
+        # Preserve order of mention by scanning prompt tokens.
+        ordered: list[str] = []
+        for token in lower_msg.replace(",", " ").replace(".", " ").split():
+            for m in matches:
+                if token == m.lower() and m not in ordered:
+                    ordered.append(m)
+        # Include matched columns that may be multi-word after token pass.
+        for m in matches:
+            if m not in ordered:
+                ordered.append(m)
+        return ordered
+
+    def _pick_best_column_from_prompt(self, message: str, columns: list[str]) -> str | None:
+        matches = self._match_columns_in_prompt(message, columns)
+        if matches:
+            return matches[0]
+        if columns:
+            return str(columns[0])
+        return None

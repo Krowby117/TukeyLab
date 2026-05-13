@@ -1,4 +1,3 @@
-
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QPalette, QIcon, QAction
 from PySide6.QtWidgets import (
@@ -33,6 +32,7 @@ import json
 from components.chatbot import ChatbotGUI
 from components.project_ai import DatasetCatalogController
 from components.project_widgets import ButtonList, ItemCreationMenu, ItemViewer
+
 
 def make_dataframe(filepath: str):
     # load the file path based on the type
@@ -95,7 +95,6 @@ class ProjectPage(QMainWindow):
 
         self.chat_controller = DatasetCatalogController(lambda: self.project_dataframes)
         self.chat_window = ChatbotGUI(self.chat_controller)
-        self.chat_window.graph_requested.connect(self._handle_ai_graph)
 
         right_layout = QVBoxLayout()
         right_layout.setContentsMargins(10, top_padding, 10, 0)
@@ -158,9 +157,12 @@ class ProjectPage(QMainWindow):
                 # iterate through the items in each subdirectory
                 for item in subfolder.iterdir():
                     if item.is_file():
-                        if subfolder.name == "data": datasets.append(item.name)
-                        if subfolder.name == "graphs": graphs.append(item.name)
-                        if subfolder.name == "info": docs.append(item.name)
+                        if subfolder.name == "data":
+                            datasets.append(item.name)
+                        if subfolder.name == "graphs":
+                            graphs.append(item.name)
+                        if subfolder.name == "info":
+                            docs.append(item.name)
 
         # load all information into a fresh schema
         proj_schema = {
@@ -256,23 +258,6 @@ class ProjectPage(QMainWindow):
             # indent=4 makes the nested structure visually clear
             json.dump(metadata, f, indent=2)
 
-    def _handle_ai_graph(self, graph_request: dict):
-        """Convert an AI graph_request payload into a project graph item."""
-        figure_json = graph_request.get("figure_json")
-        if not figure_json:
-            return
-
-        metadata = {
-            "name": graph_request.get("name", "AI Graph"),
-            "graph_format": "figure_json",
-            "figure_json": figure_json,
-            "sources": graph_request.get("sources", []),
-            "intent": graph_request.get("intent", {}),
-        }
-
-        self._import_graph(metadata)
-        self._load_graph(metadata)
-        self.save_schema()
 
     def _view_dataframe(self, name: str):
         self.item_view.show_item("data", name)
