@@ -229,8 +229,10 @@ class ItemViewer(QWidget):
         "Heatmap",
         "KDE Plot",
         "Correlation Matrix",
-        #"Bar Chart",
-        #"Pie Chart",
+        "Line Plot",
+        "Bar Chart",
+        "Violin Plot",
+        "Pie Chart",
     ]
 
     curr_item = ""

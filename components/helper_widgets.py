@@ -30,8 +30,10 @@ class PlotlyWebEngine(QWebEngineView):
         "Heatmap": 1,
         "KDE Plot": 1,
         "Correlation Matrix": 1,
-        # "Bar Chart": 1,
-        # "Pie Chart": 1,
+        "Line Plot": 1,
+        "Bar Chart": 1,
+        "Violin Plot": 1,
+        "Pie Chart": 1,
     }
 
     def __init__(self):
@@ -66,25 +68,31 @@ class PlotlyWebEngine(QWebEngineView):
         if metadata is None or not metadata:
             return ""
 
-        name = metadata["name"]
+        name = metadata.get("name", "")
+        graph_type = metadata.get("type")
+        data = metadata.get("data")
+        params = metadata.get("params")
+
+        if not name or graph_type not in self._graph_inputs or not data:
+            return ""
 
         if name == self._curr_item:
             return ""
 
         self._curr_item = name
 
-        graph_type = metadata["type"]
-        data = metadata["data"]
-        params = metadata["params"]
-
         # resets the plot area so a fresh graph gets updated
         self.setHtml("")
 
         # graph the dataframe(s) needed for the graph
-        if self._graph_inputs[graph_type] == 1:
-            df = self._dataframes[data[0]]
-        else:
+        if self._graph_inputs[graph_type] != 1:
             raise ValueError("Unsupported graph type")
+
+        source = data[0]
+        if source not in self._dataframes:
+            return ""
+
+        df = self._dataframes[source]
 
         if graph_type == "Histogram":
             feature = params["feature"]
@@ -120,14 +128,50 @@ class PlotlyWebEngine(QWebEngineView):
         if graph_type == "KDE Plot":
             feature = params
 
-            fig = ff.create_distplot(hist_data=df, group_labels=feature, show_hist=False, show_rug=False)
+            fig = ff.create_distplot(
+                hist_data=[df[feature].dropna().tolist()],
+                group_labels=[feature],
+                show_hist=False,
+                show_rug=False,
+            )
             fig.update_layout(template="plotly_dark")
             return fig.to_html(include_plotlyjs=True, full_html=True)
 
         if graph_type == "Correlation Matrix":
-            corr = df.corr()
+            corr = df.corr(numeric_only=True)
 
             fig = px.imshow(corr, title=name)
+            fig.update_layout(template="plotly_dark")
+            return fig.to_html(include_plotlyjs=True, full_html=True)
+
+        if graph_type == "Line Plot":
+            line_x = params["x"]
+            line_y = params["y"]
+
+            fig = px.line(df, x=line_x, y=line_y, title=name)
+            fig.update_layout(template="plotly_dark")
+            return fig.to_html(include_plotlyjs=True, full_html=True)
+
+        if graph_type == "Bar Chart":
+            bar_x = params["x"]
+            bar_y = params["y"]
+
+            fig = px.bar(df, x=bar_x, y=bar_y, title=name)
+            fig.update_layout(template="plotly_dark")
+            return fig.to_html(include_plotlyjs=True, full_html=True)
+
+        if graph_type == "Violin Plot":
+            feature = params
+
+            fig = px.violin(df, y=feature, box=True, title=name)
+            fig.update_layout(template="plotly_dark")
+            return fig.to_html(include_plotlyjs=True, full_html=True)
+
+        if graph_type == "Pie Chart":
+            pie_names = params["names"]
+            pie_values = params["values"]
+
+            fig = px.pie(df, names=pie_names, values=pie_values, title=name)
             fig.update_layout(template="plotly_dark")
             return fig.to_html(include_plotlyjs=True, full_html=True)
 

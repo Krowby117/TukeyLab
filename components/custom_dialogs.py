@@ -41,8 +41,10 @@ class SingleFileGraph(QDialog):
         "Heatmap",
         "KDE Plot",
         "Correlation Matrix",
-        #"Bar Chart",
-        #"Pie Chart",
+        "Line Plot",
+        "Bar Chart",
+        "Violin Plot",
+        "Pie Chart",
     ]
 
     created_graph = Signal(dict)
@@ -75,6 +77,10 @@ class SingleFileGraph(QDialog):
         self.inputStack.addWidget(self.heatmap_inputs())
         self.inputStack.addWidget(self.kde_inputs())
         self.inputStack.addWidget(self.correlation_inputs())
+        self.inputStack.addWidget(self.line_inputs())
+        self.inputStack.addWidget(self.bar_inputs())
+        self.inputStack.addWidget(self.violin_inputs())
+        self.inputStack.addWidget(self.pie_inputs())
 
         #self.graphView = MplCanvas(self)
         self.graphView = PlotlyWebEngine()
@@ -133,6 +139,29 @@ class SingleFileGraph(QDialog):
             param = {}
             name = f"{dataset}_Correlation_Matrix"
 
+        elif self.graphType == "Line Plot" and self._combo_has_valid_selection(self.line_feature_x) and self._combo_has_valid_selection(self.line_feature_y):
+            x = self.line_feature_x.currentText()
+            y = self.line_feature_y.currentText()
+            param = {"x": x, "y": y}
+            name = f"{x}_v_{y}_LinePlot"
+
+        elif self.graphType == "Bar Chart" and self._combo_has_valid_selection(self.bar_feature_x) and self._combo_has_valid_selection(self.bar_feature_y):
+            x = self.bar_feature_x.currentText()
+            y = self.bar_feature_y.currentText()
+            param = {"x": x, "y": y}
+            name = f"{x}_v_{y}_BarChart"
+
+        elif self.graphType == "Violin Plot" and self._combo_has_valid_selection(self.violin_feature):
+            feature = self.violin_feature.currentText()
+            param = feature
+            name = f"{feature}_ViolinPlot"
+
+        elif self.graphType == "Pie Chart" and self._combo_has_valid_selection(self.pie_names_feature) and self._combo_has_valid_selection(self.pie_values_feature):
+            names = self.pie_names_feature.currentText()
+            values = self.pie_values_feature.currentText()
+            param = {"names": names, "values": values}
+            name = f"{names}_v_{values}_PieChart"
+
         else: return
 
         # define the graph metadata to emit
@@ -146,6 +175,10 @@ class SingleFileGraph(QDialog):
         self.graphView.update_view(self._metadata)
 
     def _create_graph(self):
+        if not self._metadata:
+            QMessageBox.information(self, "No Graph", "Pick a graph type and valid inputs first.")
+            return
+
         # emit the metadata
         self.created_graph.emit(self._metadata)
         self.accept()
@@ -163,7 +196,11 @@ class SingleFileGraph(QDialog):
             "Box Plot": 3,
             "Heatmap": 4,
             "KDE Plot": 5,
-            "Correlation Matrix": 6
+            "Correlation Matrix": 6,
+            "Line Plot": 7,
+            "Bar Chart": 8,
+            "Violin Plot": 9,
+            "Pie Chart": 10,
         }
 
         self.graphType = graph_type
@@ -183,6 +220,7 @@ class SingleFileGraph(QDialog):
 
         df = self._dataframes[file]
         numeric_data = df.select_dtypes(include=['number']).columns.tolist()
+        all_data = df.columns.tolist()
 
         # previous selections for all graph types, lets it save selections while looking at options
         prev_hist = self.hist_feature.currentText()
@@ -192,6 +230,13 @@ class SingleFileGraph(QDialog):
         prev_hx = self.heatmap_feature_x.currentText()
         prev_hy = self.heatmap_feature_y.currentText()
         prev_kde = self.kde_feature.currentText()
+        prev_lx = self.line_feature_x.currentText()
+        prev_ly = self.line_feature_y.currentText()
+        prev_bx = self.bar_feature_x.currentText()
+        prev_by = self.bar_feature_y.currentText()
+        prev_violin = self.violin_feature.currentText()
+        prev_pie_names = self.pie_names_feature.currentText()
+        prev_pie_values = self.pie_values_feature.currentText()
 
         if self.graphType == "Histogram":
             self._restore_selection(self.hist_feature, numeric_data, prev_hist)
@@ -205,6 +250,17 @@ class SingleFileGraph(QDialog):
             self._restore_selection(self.heatmap_feature_y, numeric_data, prev_hy)
         if self.graphType == "KDE Plot":
             self._restore_selection(self.kde_feature, numeric_data, prev_kde)
+        if self.graphType == "Line Plot":
+            self._restore_selection(self.line_feature_x, all_data, prev_lx)
+            self._restore_selection(self.line_feature_y, numeric_data, prev_ly)
+        if self.graphType == "Bar Chart":
+            self._restore_selection(self.bar_feature_x, all_data, prev_bx)
+            self._restore_selection(self.bar_feature_y, numeric_data, prev_by)
+        if self.graphType == "Violin Plot":
+            self._restore_selection(self.violin_feature, numeric_data, prev_violin)
+        if self.graphType == "Pie Chart":
+            self._restore_selection(self.pie_names_feature, all_data, prev_pie_names)
+            self._restore_selection(self.pie_values_feature, numeric_data, prev_pie_values)
 
         self._generate_graph()
 
@@ -220,7 +276,7 @@ class SingleFileGraph(QDialog):
 
     def histo_inputs(self):
         widget = QWidget()
-        layout = QVBoxLayout()
+        layout = QFormLayout()
 
         self.hist_feature = QComboBox()
         self.hist_feature.currentTextChanged.connect(self._generate_graph)
@@ -230,15 +286,15 @@ class SingleFileGraph(QDialog):
         self.bins.setRange(1, 50)
         self.bins.valueChanged.connect(self._generate_graph)
 
-        layout.addWidget(self.hist_feature)
-        layout.addWidget(self.bins)
+        layout.addRow("Feature Column:", self.hist_feature)
+        layout.addRow("Number of Bins:", self.bins)
 
         widget.setLayout(layout)
         return widget
 
     def scatter_inputs(self):
         widget = QWidget()
-        layout = QHBoxLayout()
+        layout = QFormLayout()
 
         self.scat_feature_x = QComboBox()
         self.scat_feature_x.currentTextChanged.connect(self._generate_graph)
@@ -246,28 +302,28 @@ class SingleFileGraph(QDialog):
         self.scat_feature_y = QComboBox()
         self.scat_feature_y.currentTextChanged.connect(self._generate_graph)
 
-        layout.addWidget(self.scat_feature_x)
-        layout.addWidget(self.scat_feature_y)
+        layout.addRow("X Axis Column:", self.scat_feature_x)
+        layout.addRow("Y Axis Column:", self.scat_feature_y)
 
         widget.setLayout(layout)
         return widget
 
     def box_inputs(self):
         widget = QWidget()
-        layout = QHBoxLayout()
+        layout = QFormLayout()
 
         self.box_feature = QComboBox()
         self.box_feature.addItem(self.default_text)
         self.box_feature.currentTextChanged.connect(self._generate_graph)
 
-        layout.addWidget(self.box_feature)
+        layout.addRow("Feature Column:", self.box_feature)
 
         widget.setLayout(layout)
         return widget
 
     def heatmap_inputs(self):
         widget = QWidget()
-        layout = QHBoxLayout()
+        layout = QFormLayout()
 
         self.heatmap_feature_x = QComboBox()
         self.heatmap_feature_x.currentTextChanged.connect(self._generate_graph)
@@ -275,31 +331,91 @@ class SingleFileGraph(QDialog):
         self.heatmap_feature_y = QComboBox()
         self.heatmap_feature_y.currentTextChanged.connect(self._generate_graph)
 
-        layout.addWidget(self.heatmap_feature_x)
-        layout.addWidget(self.heatmap_feature_y)
+        layout.addRow("X Axis Column:", self.heatmap_feature_x)
+        layout.addRow("Y Axis Column:", self.heatmap_feature_y)
 
         widget.setLayout(layout)
         return widget
 
     def kde_inputs(self):
         widget = QWidget()
-        layout = QVBoxLayout()
+        layout = QFormLayout()
 
         self.kde_feature = QComboBox()
         self.kde_feature.currentTextChanged.connect(self._generate_graph)
 
-        layout.addWidget(self.kde_feature)
+        layout.addRow("Feature Column:", self.kde_feature)
 
         widget.setLayout(layout)
         return widget
 
     def correlation_inputs(self):
         widget = QWidget()
-        layout = QVBoxLayout()
+        layout = QFormLayout()
 
-        self.corr_label = QLabel("")
+        self.corr_label = QLabel("No additional inputs are needed.")
 
-        layout.addWidget(self.corr_label)
+        layout.addRow("Info:", self.corr_label)
+
+        widget.setLayout(layout)
+        return widget
+
+    def line_inputs(self):
+        widget = QWidget()
+        layout = QFormLayout()
+
+        self.line_feature_x = QComboBox()
+        self.line_feature_x.currentTextChanged.connect(self._generate_graph)
+
+        self.line_feature_y = QComboBox()
+        self.line_feature_y.currentTextChanged.connect(self._generate_graph)
+
+        layout.addRow("X Axis Column:", self.line_feature_x)
+        layout.addRow("Y Axis Column:", self.line_feature_y)
+
+        widget.setLayout(layout)
+        return widget
+
+    def bar_inputs(self):
+        widget = QWidget()
+        layout = QFormLayout()
+
+        self.bar_feature_x = QComboBox()
+        self.bar_feature_x.currentTextChanged.connect(self._generate_graph)
+
+        self.bar_feature_y = QComboBox()
+        self.bar_feature_y.currentTextChanged.connect(self._generate_graph)
+
+        layout.addRow("Category Column:", self.bar_feature_x)
+        layout.addRow("Value Column:", self.bar_feature_y)
+
+        widget.setLayout(layout)
+        return widget
+
+    def violin_inputs(self):
+        widget = QWidget()
+        layout = QFormLayout()
+
+        self.violin_feature = QComboBox()
+        self.violin_feature.currentTextChanged.connect(self._generate_graph)
+
+        layout.addRow("Distribution Column:", self.violin_feature)
+
+        widget.setLayout(layout)
+        return widget
+
+    def pie_inputs(self):
+        widget = QWidget()
+        layout = QFormLayout()
+
+        self.pie_names_feature = QComboBox()
+        self.pie_names_feature.currentTextChanged.connect(self._generate_graph)
+
+        self.pie_values_feature = QComboBox()
+        self.pie_values_feature.currentTextChanged.connect(self._generate_graph)
+
+        layout.addRow("Slice Labels Column:", self.pie_names_feature)
+        layout.addRow("Slice Values Column:", self.pie_values_feature)
 
         widget.setLayout(layout)
         return widget
