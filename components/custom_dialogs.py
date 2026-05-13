@@ -26,7 +26,7 @@ import seaborn as sns
 import pandas as pd
 import hashlib
 import time
-
+from pathlib import Path
 import plotly.express as px
 
 from components.helper_widgets import PlotlyWebEngine
@@ -425,7 +425,7 @@ class DataInformation(QDialog):
     activeFile = ""
     info = None
 
-    created_doc = Signal(str, str, object)
+    generated_info = Signal(str, object)
     def __init__(self, dfs, parent=None):
         super().__init__(parent)
         self.resize(900, 700)
@@ -457,8 +457,8 @@ class DataInformation(QDialog):
         if self.info is None or self.info.empty:
             self.reject()
 
-        doc_name = self.activeFile + " General Info"
-        self.created_doc.emit(doc_name, "table", self.info)
+        doc_name = Path(self.activeFile).stem + "_General_Info"
+        self.generated_info.emit(doc_name, self.info)
         self.accept()
 
     def update_table(self, file: str):
@@ -483,6 +483,10 @@ class DataInformation(QDialog):
         # Combine everything
         self.info = summary.join(desc)
 
+        # Reset index to make feature names a column
+        self.info = self.info.reset_index()
+        self.info = self.info.rename(columns={"index": "Feature"})
+
         self.table.setRowCount(self.info.shape[0])
         self.table.setColumnCount(self.info.shape[1])
 
@@ -500,46 +504,6 @@ class DataInformation(QDialog):
                     display = str(value)
 
                 self.table.setItem(row, col, QTableWidgetItem(display))
-
-class MissingValueAnalysis(QDialog):
-    def __init__(self, dfs, parent=None):
-        super().__init__(parent)
-        self.resize(900, 700)
-        self.dataframes = dfs
-        self.setWindowTitle("Missing Value Analysis")
-
-        self.fileCombo = QComboBox()
-        self.fileCombo.addItems(list(dfs.keys()))
-        self.fileCombo.currentTextChanged.connect(self.update_plot)
-
-        #self.canvas = MplCanvas(self)
-
-        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
-        buttons.accepted.connect(self.accept)
-
-        layout = QVBoxLayout()
-        layout.addWidget(self.fileCombo)
-        layout.addWidget(self.canvas)
-        layout.addWidget(buttons)
-        self.setLayout(layout)
-
-        self.update_plot(self.fileCombo.currentText())
-
-    def update_plot(self, file):
-        df = self.dataframes[file]
-        missing = df.isna().sum()
-        missing = missing[missing > 0]  # only show columns that have nulls
-
-        self.canvas.ax.clear()
-        if missing.empty:
-            self.canvas.ax.text(0.5, 0.5, "No missing values!",
-                                ha='center', va='center', transform=self.canvas.ax.transAxes)
-        else:
-            missing.plot(kind='bar', ax=self.canvas.ax, color='salmon')
-            self.canvas.ax.set_title("Missing Values Per Column")
-            self.canvas.ax.set_ylabel("Count")
-
-        self.canvas.draw()
 
 class NewProjectDialog(QDialog):
     created = Signal(str)

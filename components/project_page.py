@@ -56,6 +56,7 @@ class ProjectPage(QMainWindow):
         self.FULL_ID = full_id
         self.project_dataframes = {}
         self.project_graphs = {}
+        self.project_infos = {}
         self.current_dataframe = ""
 
         # -- Set up the left bar -- #
@@ -63,7 +64,7 @@ class ProjectPage(QMainWindow):
         self.source_menu.item_selected.connect(self._view_dataframe)
 
         self.created_items_menu = ButtonList("Created Items")
-        self.created_items_menu.item_selected.connect(self._view_graph)
+        self.created_items_menu.item_selected.connect(self._view_item)
 
         top_padding = 10
 
@@ -142,7 +143,10 @@ class ProjectPage(QMainWindow):
             self._load_graph(metadata)
 
         for file in docs:
-            self._load_doc(file)
+            if str(file).endswith(".csv"):
+                self._load_info(file)
+            if str(file).endswith(".txt"):
+                pass
 
     def save_schema(self):
         # create a blank schema and load in basic information
@@ -151,7 +155,7 @@ class ProjectPage(QMainWindow):
         graphs = []
         docs = []
 
-        # iterate through the projects subfolders and load in subfolder info
+        # iterate through the projects subfolders and load in subfolder docs
         for subfolder in self.PROJECT_DIR.iterdir():
             if subfolder.is_dir():
                 # iterate through the items in each subdirectory
@@ -159,7 +163,7 @@ class ProjectPage(QMainWindow):
                     if item.is_file():
                         if subfolder.name == "data": datasets.append(item.name)
                         if subfolder.name == "graphs": graphs.append(item.name)
-                        if subfolder.name == "info": docs.append(item.name)
+                        if subfolder.name in ("info", "docs"): docs.append(item.name)
 
         # load all information into a fresh schema
         proj_schema = {
@@ -203,8 +207,28 @@ class ProjectPage(QMainWindow):
         # update created items menu
         self.created_items_menu.add_button(name)
 
-    def _load_doc(self, metadata):
-        pass
+    def _load_info(self, metadata):
+        if isinstance(metadata, str):
+            src_path = self.PROJECT_DIR / "docs" / metadata
+            if not src_path.exists():
+                return
+
+            name = Path(metadata).stem
+            metadata = {
+                "name": name,
+                "doc": pd.read_csv(src_path)
+            }
+        else:
+            name = metadata["name"]
+
+        if name in self.project_infos.keys():
+            return
+
+        # add it to the project's info docs
+        self.project_infos[name] = metadata
+
+        # update created items menu
+        self.created_items_menu.add_button(name)
 
     # copies the newly loaded data source into the project directory
     def _import_datafile(self, filepath: str):
@@ -243,6 +267,9 @@ class ProjectPage(QMainWindow):
         elif item_type == "graph":
             self._import_graph(metadata)
             self._load_graph(metadata)
+        elif item_type == "doc":
+            self._import_info(metadata)
+            self._load_info(metadata)
 
     # copies the newly created graph's metadata into the project directory
     def _import_graph(self, metadata: dict):
@@ -255,9 +282,23 @@ class ProjectPage(QMainWindow):
             # indent=4 makes the nested structure visually clear
             json.dump(metadata, f, indent=2)
 
+    # copies the newly created info doc into the project directory
+    def _import_info(self, metadata: dict):
+        docs_dir = self.PROJECT_DIR / "docs"
+        docs_dir.mkdir(parents=True, exist_ok=True)
+
+        file_path = docs_dir / (metadata["name"] + ".csv")
+
+        info = metadata["doc"]
+        info.to_csv(file_path, index=False)
+
     def _view_dataframe(self, name: str):
         self.item_view.show_item("data", name)
 
-    def _view_graph(self, name: str):
-        metadata = self.project_graphs[name]
-        self.item_view.show_item("graph", metadata)
+    def _view_item(self, name: str):
+        if name in self.project_graphs.keys():
+            metadata = self.project_graphs[name]
+            self.item_view.show_item("graph", metadata)
+        elif name in self.project_infos.keys():
+            metadata = self.project_infos[name]
+            self.item_view.show_item("doc", metadata)

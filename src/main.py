@@ -161,12 +161,12 @@ class MainWindow(QMainWindow):
         with path_to_schema.open("w", encoding="utf-8") as f:
             json.dump(proj_schema, f, indent=2)
 
-        # create the project folders (data, graphs, info) into the main project folder
+        # create the project folders (data, graphs, docs) into the main project folder
         (project_path / "data").mkdir(exist_ok=True)
         #(project_path / "data" / "raw").mkdir(exist_ok=True)
         #(project_path / "data" / "clean").mkdir(exist_ok=True)
         (project_path / "graphs").mkdir(exist_ok=True)
-        (project_path / "info").mkdir(exist_ok=True)
+        (project_path / "docs").mkdir(exist_ok=True)
 
         # update open project names and ids
         self.proj_id_name[proj_id] = proj_name

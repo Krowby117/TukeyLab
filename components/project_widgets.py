@@ -144,7 +144,7 @@ class ItemCreationMenu(QWidget):
 
         # -- Setup each of the creation buttons -- #
         upload_file = QToolButton()
-        upload_file.setText("New Source")
+        upload_file.setText("New\nSource")
         upload_file.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
         upload_file.clicked.connect(self._upload_new_file)
         icon = QIcon(str(icon_dir / "file-up.svg"))
@@ -153,7 +153,7 @@ class ItemCreationMenu(QWidget):
         upload_file.setMinimumHeight(90)
 
         graph_creation = QToolButton()
-        graph_creation.setText("New Graph")
+        graph_creation.setText("New\nGraph")
         graph_creation.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
         graph_creation.clicked.connect(self._open_graph_dialog)
         icon = QIcon(str(icon_dir / "image-plus.svg"))
@@ -162,7 +162,7 @@ class ItemCreationMenu(QWidget):
         graph_creation.setMinimumHeight(90)
 
         info_creation = QToolButton()
-        info_creation.setText("Source Info")
+        info_creation.setText("Source\nInfo")
         info_creation.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
         info_creation.clicked.connect(self._open_info_dialog)
         icon = QIcon(str(icon_dir / "file-plus-corner.svg"))
@@ -170,11 +170,21 @@ class ItemCreationMenu(QWidget):
         info_creation.setIconSize(QSize(48, 48))
         info_creation.setMinimumHeight(90)
 
+        doc_opener = QToolButton()
+        doc_opener.setText("Open\nNotes")
+        doc_opener.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
+        doc_opener.clicked.connect(self._open_info_dialog)
+        icon = QIcon(str(icon_dir / "file-text.svg"))
+        doc_opener.setIcon(icon)
+        doc_opener.setIconSize(QSize(48, 48))
+        doc_opener.setMinimumHeight(90)
+
         # Create content layout
         form_layout = QHBoxLayout()
         form_layout.addWidget(upload_file)
         form_layout.addWidget(graph_creation)
         form_layout.addWidget(info_creation)
+        form_layout.addWidget(doc_opener)
         form_layout.setContentsMargins(15, 15, 15, 15)
         form_layout.setSpacing(10)
 
@@ -186,6 +196,8 @@ class ItemCreationMenu(QWidget):
                 border: 1px solid #404040;
                 border-radius: 8px;
                 background-color: #2d2d2d;
+                font-size: 10px;
+                padding: 1px;
             }
         """)
 
@@ -233,17 +245,16 @@ class ItemCreationMenu(QWidget):
                 "At least one datasource is required before data information be viewed.")
             return
 
-        # then open pop up for generating data info
+        # then open pop up for generating data docs
         self.popup = DataInformation(self.dataframes, self)
         self.popup.setModal(True)
-        self.popup.created_doc.connect(self._close_info_dialog)
+        self.popup.generated_info.connect(self._close_info_dialog)
         self.popup.open()
 
-    def _close_info_dialog(self, doc_name, doc_type, item):
+    def _close_info_dialog(self, doc_name, item):
         # create the item metadata
         metadata = {
-            "doc_name": doc_name,
-            "doc_type": doc_type,
+            "name": doc_name,
             "doc":     item
         }
 
@@ -357,4 +368,28 @@ class ItemViewer(QWidget):
         self.view_stack.setCurrentWidget(self.graph)
 
     def _show_doc(self, metadata):
-        pass
+        if metadata is None or not metadata:
+            return
+
+        doc = metadata.get("doc")
+        if not isinstance(doc, pd.DataFrame) or doc.empty:
+            return
+
+        self.table.clear()
+        self.table.setRowCount(0)
+        self.table.setColumnCount(0)
+
+        headers = [str(col) for col in doc.columns]
+        self.table.setColumnCount(len(headers))
+        self.table.setHorizontalHeaderLabels(headers)
+
+        rows = doc.values
+        self.table.setRowCount(len(rows))
+
+        for row_idx, row in enumerate(rows):
+            for col_idx, value in enumerate(row):
+                is_missing = pd.isna(value) if pd.api.types.is_scalar(value) else False
+                display_value = "-" if is_missing else str(value)
+                self.table.setItem(row_idx, col_idx, QTableWidgetItem(display_value))
+
+        self.view_stack.setCurrentWidget(self.table)
