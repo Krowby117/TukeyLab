@@ -97,14 +97,14 @@ class ProjectPage(QMainWindow):
         self.chat_window = ChatbotGUI(self.chat_controller)
 
         right_layout = QVBoxLayout()
-        right_layout.setContentsMargins(10, top_padding, 10, 0)
-        right_layout.setSpacing(15)
+        right_layout.setContentsMargins(10, top_padding, 10, 10)
+        right_layout.setSpacing(5)
         right_layout.addWidget(self.item_creation_menu)
         right_layout.addWidget(self.chat_window, 1)
 
         right_container = QWidget()
         right_container.setLayout(right_layout)
-        right_container.setFixedWidth(300)
+        right_container.setFixedWidth(325)
 
         # ---- Set up main widget layout ---- #
         main_layout = QHBoxLayout()

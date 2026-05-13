@@ -1,26 +1,23 @@
 from importlib.metadata import metadata
 
-from PySide6.QtCore import Qt, Signal, QUrl
+from PySide6.QtCore import Qt, Signal, QUrl, QSize
 from PySide6.QtGui import QPalette, QIcon, QColor
 from PySide6.QtWidgets import (
     QWidget,
-    QMainWindow,
     QPushButton,
+    QToolButton,
     QVBoxLayout,
-    QHBoxLayout,
     QFileDialog,
     QTableWidget,
     QTableWidgetItem,
-    QToolButton,
     QStyle,
     QScrollArea,
-    QSplitter,
     QSizePolicy,
     QMessageBox,
     QFormLayout,
-    QTabWidget,
     QLabel,
-    QStackedWidget
+    QStackedWidget,
+    QHBoxLayout
 )
 
 import pandas as pd
@@ -33,6 +30,26 @@ import json
 
 from components.custom_dialogs import SingleFileGraph, DataInformation
 from components.helper_widgets import PlotlyWebEngine
+
+
+class WrappingButton(QPushButton):
+    def __init__(self, text="", parent=None):
+        super().__init__(parent)
+        self.setText("")
+
+        self._label = QLabel(text, self)
+        self._label.setWordWrap(True)
+        self._label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self._label.setStyleSheet("border: none; background: transparent; font-size: 10px;")
+
+        inner_layout = QVBoxLayout(self)
+        inner_layout.setContentsMargins(6, 6, 6, 6)
+        inner_layout.addWidget(self._label)
+
+    def setDisplayText(self, text: str):
+        self._label.setText(text)
+
 
 class ButtonList(QWidget):
     item_selected = Signal(str)
@@ -100,9 +117,12 @@ class ButtonList(QWidget):
         if name in self._buttons:
             return
 
-        btn = QToolButton()
-        btn.setText(name)
-        btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        # Remove file extension and replace underscores with spaces
+        display_name = Path(name).stem.replace("_", " ")
+
+        btn = WrappingButton()
+        btn.setDisplayText(display_name)
+        btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
         btn.clicked.connect(lambda: self._make_selection(name))
         self.layout.insertWidget(self.layout.count() - 1, btn)
         self._buttons[name] = btn
@@ -123,26 +143,38 @@ class ItemCreationMenu(QWidget):
         icon_dir = Path(__file__).resolve().parent.parent / "assets" / "icons"
 
         # -- Setup each of the creation buttons -- #
-        upload_file = QPushButton()
+        upload_file = QToolButton()
+        upload_file.setText("New Source")
+        upload_file.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
         upload_file.clicked.connect(self._upload_new_file)
         icon = QIcon(str(icon_dir / "file-up.svg"))
         upload_file.setIcon(icon)
+        upload_file.setIconSize(QSize(48, 48))
+        upload_file.setMinimumHeight(90)
 
-        graph_creation = QPushButton()
+        graph_creation = QToolButton()
+        graph_creation.setText("New Graph")
+        graph_creation.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
         graph_creation.clicked.connect(self._open_graph_dialog)
         icon = QIcon(str(icon_dir / "image-plus.svg"))
         graph_creation.setIcon(icon)
+        graph_creation.setIconSize(QSize(48, 48))
+        graph_creation.setMinimumHeight(90)
 
-        info_creation = QPushButton()
+        info_creation = QToolButton()
+        info_creation.setText("Source Info")
+        info_creation.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
         info_creation.clicked.connect(self._open_info_dialog)
         icon = QIcon(str(icon_dir / "file-plus-corner.svg"))
         info_creation.setIcon(icon)
+        info_creation.setIconSize(QSize(48, 48))
+        info_creation.setMinimumHeight(90)
 
         # Create content layout
-        form_layout = QFormLayout()
-        form_layout.addRow("Upload Datasource: ", upload_file)
-        form_layout.addRow("New Graph: ", graph_creation)
-        form_layout.addRow("New Info Doc: ", info_creation)
+        form_layout = QHBoxLayout()
+        form_layout.addWidget(upload_file)
+        form_layout.addWidget(graph_creation)
+        form_layout.addWidget(info_creation)
         form_layout.setContentsMargins(15, 15, 15, 15)
         form_layout.setSpacing(10)
 
