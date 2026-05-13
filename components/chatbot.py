@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import json
+
 from PySide6.QtWidgets import QWidget, QLineEdit, QPushButton, QVBoxLayout, QHBoxLayout, QTextEdit, QLabel
 from PySide6.QtCore import QThread, Signal
 
 from components.project_ai import DatasetCatalogController
 
 class ChatbotGUI(QWidget):
+    graph_requested = Signal(dict)   # emitted when AI produces a create_graph payload
+
     def __init__(self, controller: DatasetCatalogController):
         super().__init__()
 
@@ -43,7 +47,7 @@ class ChatbotGUI(QWidget):
         self.setLayout(self.layout)
         self._setup_ui_style()
         self.chatlog.append(
-            "Bot: I can list available datasets and describe a dataset's columns and dtypes."
+            "Bot: I can list datasets, describe datasets, and return Plotly figure JSON graph requests."
         )
 
     def _setup_ui_style(self):
@@ -114,7 +118,36 @@ class ChatbotGUI(QWidget):
             self.worker.finished.connect(self.on_finish)
             self.worker.start()
 
-    def display_response(self, response):
+    def display_response(self, response: str):
+        try:
+            obj = json.loads(response)
+            action = obj.get("action")
+
+            if action == "create_graph":
+                graph_request = obj.get("graph_request", {})
+                name = graph_request.get("name", "AI Graph")
+                chart_type = graph_request.get("intent", {}).get("chart_type", "")
+                sources = graph_request.get("sources", [])
+                self.chatlog.append(
+                    f"Bot: Created graph \"{name}\" ({chart_type}) "
+                    f"from {', '.join(sources)}. It has been added to Created Items. \n"
+                )
+                self.graph_requested.emit(graph_request)
+                return
+
+            if action == "error":
+                err = obj.get("error", {})
+                detail = err.get("detail", obj.get("message", "Unknown error."))
+                self.chatlog.append(f"Bot: ⚠️ {detail} \n")
+                extra = err.get("available_columns") or err.get("available_datasets") or err.get("supported_types")
+                if extra:
+                    self.chatlog.append(f"      Options: {', '.join(str(e) for e in extra[:12])}{'...' if len(extra) > 12 else ''} \n")
+                return
+
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+        # Plain text response (dataset catalog, describe, refusal)
         self.chatlog.append(f"Bot: {response} \n")
 
     def on_finish(self):

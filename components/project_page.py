@@ -95,6 +95,7 @@ class ProjectPage(QMainWindow):
 
         self.chat_controller = DatasetCatalogController(lambda: self.project_dataframes)
         self.chat_window = ChatbotGUI(self.chat_controller)
+        self.chat_window.graph_requested.connect(self._handle_ai_graph)
 
         right_layout = QVBoxLayout()
         right_layout.setContentsMargins(10, top_padding, 10, 0)
@@ -254,6 +255,24 @@ class ProjectPage(QMainWindow):
         with open(file_path, "w", encoding="utf-8") as f:
             # indent=4 makes the nested structure visually clear
             json.dump(metadata, f, indent=2)
+
+    def _handle_ai_graph(self, graph_request: dict):
+        """Convert an AI graph_request payload into a project graph item."""
+        figure_json = graph_request.get("figure_json")
+        if not figure_json:
+            return
+
+        metadata = {
+            "name": graph_request.get("name", "AI Graph"),
+            "graph_format": "figure_json",
+            "figure_json": figure_json,
+            "sources": graph_request.get("sources", []),
+            "intent": graph_request.get("intent", {}),
+        }
+
+        self._import_graph(metadata)
+        self._load_graph(metadata)
+        self.save_schema()
 
     def _view_dataframe(self, name: str):
         self.item_view.show_item("data", name)
