@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
 
 import pandas as pd
 import tempfile
+import json
 
 
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
@@ -52,9 +53,13 @@ class PlotlyWebEngine(QWebEngineView):
 
         self.page().setBackgroundColor(QColor("#1e1e1e"))
 
-        self._curr_item = ""
+        self._curr_signature = ""
         self._temp_file = ""
         self._dataframes = {}
+
+    def _metadata_signature(self, metadata: dict) -> str:
+        # Use full metadata so parameter changes (like histogram bins) trigger re-render.
+        return json.dumps(metadata, sort_keys=True, default=str)
 
     def add_dataframe(self, name: str, data: pd.DataFrame):
         self._dataframes[name] = data
@@ -65,11 +70,10 @@ class PlotlyWebEngine(QWebEngineView):
     def update_view(self, metadata: dict):
         # AI-generated graph: has pre-built figure JSON — render directly
         if metadata.get("graph_format") == "figure_json":
-            name = metadata.get("name", "")
-            if name == self._curr_item:
+            signature = self._metadata_signature(metadata)
+            if signature == self._curr_signature:
                 return
-            self._curr_item = name
-            self.setHtml("")
+            self._curr_signature = signature
             fig = go.Figure(metadata["figure_json"])
             fig.update_layout(template="plotly_dark")
             self._load_html(fig.to_html(include_plotlyjs=True, full_html=True))
@@ -100,13 +104,12 @@ class PlotlyWebEngine(QWebEngineView):
         if not name or graph_type not in self._graph_inputs or not data:
             return ""
 
-        if name == self._curr_item:
+        signature = self._metadata_signature(metadata)
+        if signature == self._curr_signature:
             return ""
 
-        self._curr_item = name
+        self._curr_signature = signature
 
-        # resets the plot area so a fresh graph gets updated
-        self.setHtml("")
 
         # graph the dataframe(s) needed for the graph
         if self._graph_inputs[graph_type] != 1:

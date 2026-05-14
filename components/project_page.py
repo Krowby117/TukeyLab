@@ -176,11 +176,11 @@ class ProjectPage(QMainWindow):
         docs_dir = self.PROJECT_DIR / "docs"
         docs_dir.mkdir(parents=True, exist_ok=True)
 
-        note_path = self.PROJECT_DIR / "ProjectNotes.txt"
+        note_path = docs_dir / "ProjectNotes.txt"
         note_path.write_text(note, encoding="utf-8")
 
     def _load_note(self):
-        note_path = self.PROJECT_DIR / "ProjectNotes.txt"
+        note_path = self.PROJECT_DIR / "docs" / "ProjectNotes.txt"
         if not note_path.exists():
             note = ""
         else:

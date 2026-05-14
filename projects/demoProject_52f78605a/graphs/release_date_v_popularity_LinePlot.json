@@ -1,0 +1,11 @@
+{
+  "data": [
+    "spotify_analysis_dataset.csv"
+  ],
+  "name": "release_date_v_popularity_LinePlot",
+  "params": {
+    "x": "release_date",
+    "y": "popularity"
+  },
+  "type": "Line Plot"
+}

@@ -1,0 +1,9 @@
+Feature,dtype,missing_values,missing_%,count,unique,top,freq
+Transaction ID,str,0,0.0,10000,10000,TXN_1961373,1
+Item,str,333,3.3300000000000005,9667,10,Juice,1171
+Quantity,str,138,1.38,9862,7,5,2013
+Price Per Unit,str,179,1.79,9821,8,3.0,2429
+Total Spent,str,173,1.73,9827,19,6.0,979
+Payment Method,str,2579,25.790000000000003,7421,5,Digital Wallet,2291
+Location,str,3265,32.65,6735,4,Takeaway,3022
+Transaction Date,str,159,1.59,9841,367,UNKNOWN,159

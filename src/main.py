@@ -180,7 +180,8 @@ class MainWindow(QMainWindow):
         return hash_id[:9] # grab the first 9 digits as a 9-digit id
 
     def closeEvent(self, event):
-        self.curr_proj.save_schema()
+        if self.curr_proj:
+            self.curr_proj.save_schema()
 
         event.accept()
 

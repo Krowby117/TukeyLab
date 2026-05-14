@@ -1,9 +1,19 @@
 {
   "project_id": "52f78605a",
   "project_name": "demoProject",
-  "datasets": [],
-  "graphs": [],
+  "datasets": [
+    "dirty_cafe_sales.csv",
+    "spotify_analysis_dataset.csv",
+    "Demo.xlsx"
+  ],
+  "graphs": [
+    "speechiness_Histogram.json",
+    "release_date_v_popularity_LinePlot.json",
+    "Demo.xlsx_Correlation_Matrix.json"
+  ],
   "info_docs": [
-    "ProjectNotes.txt"
+    "spotify_analysis_dataset_General_Info.csv",
+    "ProjectNotes.txt",
+    "dirty_cafe_sales_General_Info.csv"
   ]
 }

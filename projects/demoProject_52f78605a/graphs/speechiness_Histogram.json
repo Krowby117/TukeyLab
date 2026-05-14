@@ -1,0 +1,11 @@
+{
+  "data": [
+    "spotify_analysis_dataset.csv"
+  ],
+  "name": "speechiness_Histogram",
+  "params": {
+    "bins": 12,
+    "feature": "speechiness"
+  },
+  "type": "Histogram"
+}

@@ -98,6 +98,8 @@ class SingleFileGraph(QDialog):
         layout.addWidget(self.inputStack)
         layout.addWidget(self.graphView)
         layout.addWidget(button_box)
+        layout.setStretch(2, 0)
+        layout.setStretch(3, 1)
 
         self.setLayout(layout)
 
@@ -186,6 +188,7 @@ class SingleFileGraph(QDialog):
     def update_inputs(self, graph_type: str):
         if graph_type == self.default_text:
             self.graphType = self.default_text
+            self.inputStack.setVisible(True)
             self.inputStack.setCurrentIndex(0)
             return
 
@@ -204,6 +207,8 @@ class SingleFileGraph(QDialog):
         }
 
         self.graphType = graph_type
+        # Correlation Matrix has no configurable inputs, so let the graph use the space.
+        self.inputStack.setVisible(graph_type != "Correlation Matrix")
         self.inputStack.setCurrentIndex(mapping[graph_type])
         self.update_feature_selections()
 
@@ -284,7 +289,8 @@ class SingleFileGraph(QDialog):
         self.bins = QSlider()
         self.bins.setOrientation(Qt.Orientation.Horizontal)
         self.bins.setRange(1, 50)
-        self.bins.valueChanged.connect(self._generate_graph)
+        self.bins.setValue(10)
+        self.bins.sliderReleased.connect(lambda: self._generate_graph())
 
         layout.addRow("Feature Column:", self.hist_feature)
         layout.addRow("Number of Bins:", self.bins)
