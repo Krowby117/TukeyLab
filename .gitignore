@@ -5,3 +5,7 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyc
+
+# Allow this one folder
+!projects/demoProject_52f78605a/
+!projects/demoProject_52f78605a/**

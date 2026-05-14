@@ -1,0 +1,18 @@
+# Project Notes
+***
+### What is this?
+- basic notes about whatever is in here
+
+- lets users save and/or write down anything they think of are anything the bot says
+
+- useful for keeping everything in one place
+***
+### Random Examples of notes from the ChatBot:
+**EDA overview for Demo.xlsx:**
+- Shape: 75 rows x 5 columns
+- Numeric columns: 3
+- Non-numeric columns: 2
+- Missing values (total cells): 0
+- Duplicate rows: 0
+- Numeric preview columns: Year, Sales, Rating
+- Categorical preview columns: Category, Product
