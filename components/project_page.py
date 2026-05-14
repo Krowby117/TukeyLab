@@ -1,4 +1,3 @@
-
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QPalette, QIcon, QAction
 from PySide6.QtWidgets import (
@@ -33,6 +32,7 @@ import json
 from components.chatbot import ChatbotGUI
 from components.project_ai import DatasetCatalogController
 from components.project_widgets import ButtonList, ItemCreationMenu, ItemViewer
+
 
 def make_dataframe(filepath: str):
     # load the file path based on the type

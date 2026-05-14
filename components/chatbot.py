@@ -5,19 +5,21 @@ from PySide6.QtCore import QThread, Signal
 
 from components.project_ai import DatasetCatalogController
 
+
 class ChatbotGUI(QWidget):
     def __init__(self, controller: DatasetCatalogController):
         super().__init__()
 
         self.is_thinking = False
         self.controller = controller
+        self.history: list[dict[str, str]] = []
 
-        self.header = QLabel("Project Dataset Assistant")
+        self.header = QLabel("Project Dataset + EDA Assistant")
         self.header.setObjectName("chatHeader")
 
         self.input = QLineEdit()
         self.input.setObjectName("chatInput")
-        self.input.setPlaceholderText("Ask about project datasets...")
+        self.input.setPlaceholderText("Ask about datasets, missing values, stats, and correlations...")
         self.input.returnPressed.connect(self.send_message)
 
         self.button = QPushButton("Send")
@@ -43,7 +45,7 @@ class ChatbotGUI(QWidget):
         self.setLayout(self.layout)
         self._setup_ui_style()
         self.chatlog.append(
-            "Bot: I can list available datasets and describe a dataset's columns and dtypes."
+            "Bot: I can help you explore project datasets with EDA tasks like overviews, missingness checks, summary stats, and correlations."
         )
 
     def _setup_ui_style(self):
@@ -100,33 +102,37 @@ class ChatbotGUI(QWidget):
 
         message = self.input.text()
         if message:
-            # don't let the user send a new message until the worker is done
             self.is_thinking = True
             self.button.setEnabled(False)
 
-            # print out the users message
             self.chatlog.append(f"You: {message} \n")
             self.input.clear()
 
-            # start worker thread and print out the response
-            self.worker = LLMWorker(message, self.controller)
+            self.history.append({"role": "user", "content": message})
+            self.history = self.history[-16:]
+
+            self.worker = LLMWorker(message, list(self.history), self.controller)
             self.worker.finished.connect(self.display_response)
             self.worker.finished.connect(self.on_finish)
             self.worker.start()
 
-    def display_response(self, response):
+    def display_response(self, response: str):
         self.chatlog.append(f"Bot: {response} \n")
+        self.history.append({"role": "assistant", "content": response})
+        self.history = self.history[-16:]
 
     def on_finish(self):
         self.is_thinking = False
         self.button.setEnabled(True)
 
+
 class LLMWorker(QThread):
     finished = Signal(str)
 
-    def __init__(self, prompt: str, controller: DatasetCatalogController):
+    def __init__(self, prompt: str, history: list[dict[str, str]], controller: DatasetCatalogController):
         super().__init__()
         self.prompt = prompt
+        self.history = history
         self.controller = controller
 
     def run(self):
@@ -134,4 +140,4 @@ class LLMWorker(QThread):
         self.finished.emit(response)
 
     def ask_controller(self):
-        return self.controller.process_message(self.prompt)
+        return self.controller.process_message(self.prompt, self.history)

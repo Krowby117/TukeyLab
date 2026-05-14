@@ -24,6 +24,7 @@ from PySide6.QtWebEngineWidgets import QWebEngineView
 
 import plotly.express as px
 import plotly.figure_factory as ff
+import plotly.graph_objects as go
 
 class MplCanvas(FigureCanvas):
     def __init__(self, parent=None):
@@ -62,6 +63,19 @@ class PlotlyWebEngine(QWebEngineView):
         self._dataframes = dict(dfs)
 
     def update_view(self, metadata: dict):
+        # AI-generated graph: has pre-built figure JSON — render directly
+        if metadata.get("graph_format") == "figure_json":
+            name = metadata.get("name", "")
+            if name == self._curr_item:
+                return
+            self._curr_item = name
+            self.setHtml("")
+            fig = go.Figure(metadata["figure_json"])
+            fig.update_layout(template="plotly_dark")
+            self._load_html(fig.to_html(include_plotlyjs=True, full_html=True))
+            return
+
+        # Manual graph: use existing type-dispatched generation path
         html = self._generate_graph_html(metadata)
         self._load_html(html)
 
@@ -148,7 +162,7 @@ class PlotlyWebEngine(QWebEngineView):
             return fig.to_html(include_plotlyjs=True, full_html=True)
 
         if graph_type == "Correlation Matrix":
-            corr = df.corr(numeric_only=True)
+            corr = df.select_dtypes(include="number").corr()
 
             fig = px.imshow(corr, title=name)
             fig.update_layout(template="plotly_dark")
