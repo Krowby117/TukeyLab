@@ -17,7 +17,9 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QLabel,
     QStackedWidget,
-    QHBoxLayout
+    QHBoxLayout,
+    QPlainTextEdit,
+    QTextEdit
 )
 
 import pandas as pd
@@ -173,7 +175,7 @@ class ItemCreationMenu(QWidget):
         doc_opener = QToolButton()
         doc_opener.setText("Open\nNotes")
         doc_opener.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
-        doc_opener.clicked.connect(self._open_info_dialog)
+        doc_opener.clicked.connect(lambda: self.item_created.emit(["notes"]))
         icon = QIcon(str(icon_dir / "file-text.svg"))
         doc_opener.setIcon(icon)
         doc_opener.setIconSize(QSize(48, 48))
@@ -263,6 +265,50 @@ class ItemCreationMenu(QWidget):
 
         # set popup to none
         self.popup = None
+
+class NotesWidget(QWidget):
+    def __init__(self):
+        super().__init__()
+
+        # button to toggle preview
+        self.toggle_btn = QPushButton("Preview File")
+        self.toggle_btn.setCheckable(True)
+        self.toggle_btn.clicked.connect(self.toggle_preview)
+
+        # stacked widget to switch modes
+        self.stack = QStackedWidget()
+
+        # markdown editor mode
+        self.editor = QPlainTextEdit()
+        self.editor.setPlaceholderText("Type your markdown here...")
+
+        # markdown preview mode
+        self.viewer = QTextEdit()
+        self.viewer.setReadOnly(True)
+        self.viewer.setStyleSheet("QTextEdit { color: rgb(220, 220, 220); background-color: #1e1e1e; }")
+
+        self.stack.addWidget(self.editor)  # Index 0
+        self.stack.addWidget(self.viewer)  # Index 1
+
+        self.layout = QVBoxLayout()
+        self.layout.addWidget(self.toggle_btn)
+        self.layout.addWidget(self.stack)
+
+        self.setLayout(self.layout)
+
+    def toggle_preview(self):
+        if self.toggle_btn.isChecked():
+            # switch to preview Mode
+            markdown_text = self.editor.toPlainText()
+            self.viewer.setMarkdown(markdown_text) # display as markdown
+
+            self.stack.setCurrentIndex(1)
+            self.toggle_btn.setText("Edit Mode")
+        else:
+            # switch to edit Mode
+            self.stack.setCurrentIndex(0)
+            self.toggle_btn.setText("Preview Mode")
+
 
 class ItemViewer(QWidget):
     single_file_graphs = [
@@ -362,6 +408,12 @@ class ItemViewer(QWidget):
         if metadata is None or not metadata:
             return
 
+        name = metadata.get("name", "")
+        if name and name == self.curr_item:
+            self.view_stack.setCurrentWidget(self.graph)
+            return
+
+        self.curr_item = name
         self.graph.update_view(metadata)
 
         # set the graph as the active view

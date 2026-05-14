@@ -32,7 +32,7 @@ import json
 
 from components.chatbot import ChatbotGUI
 from components.project_ai import DatasetCatalogController
-from components.project_widgets import ButtonList, ItemCreationMenu, ItemViewer
+from components.project_widgets import ButtonList, ItemCreationMenu, ItemViewer, NotesWidget
 
 def make_dataframe(filepath: str):
     # load the file path based on the type
@@ -81,10 +81,15 @@ class ProjectPage(QMainWindow):
 
         # -- Set up the middle widget -- #
         self.item_view = ItemViewer()
+        self.notes_app = NotesWidget()
+
+        self.middle_stack = QStackedWidget()
+        self.middle_stack.addWidget(self.item_view) # index 0
+        self. middle_stack.addWidget(self.notes_app) # index 1
 
         middle_layout = QVBoxLayout()
         middle_layout.setContentsMargins(10, top_padding, 10, 10)
-        middle_layout.addWidget(self.item_view)
+        middle_layout.addWidget(self. middle_stack)
         #middle_layout.addStretch()
 
         middle_container = QWidget()
@@ -259,6 +264,14 @@ class ProjectPage(QMainWindow):
 
     def _handle_new_item(self, item_data: list):
         item_type = item_data[0]
+        if item_type == "notes":
+            if self.middle_stack.currentIndex() == 0:
+                self.middle_stack.setCurrentIndex(1)
+                return
+
+        if self.middle_stack.currentIndex() == 1:
+            self.middle_stack.setCurrentIndex(0)
+
         metadata = item_data[1]
 
         if item_type == "data":
@@ -294,11 +307,19 @@ class ProjectPage(QMainWindow):
 
     def _view_dataframe(self, name: str):
         self.item_view.show_item("data", name)
+        if self.middle_stack.currentIndex() == 1:
+            self.middle_stack.setCurrentIndex(0)
 
     def _view_item(self, name: str):
+        # Start rendering content BEFORE switching the stack so the
+        # WebEngine has time to load while the transition happens.
         if name in self.project_graphs.keys():
             metadata = self.project_graphs[name]
             self.item_view.show_item("graph", metadata)
         elif name in self.project_infos.keys():
             metadata = self.project_infos[name]
             self.item_view.show_item("doc", metadata)
+
+        if self.middle_stack.currentIndex() == 1:
+            self.middle_stack.setCurrentIndex(0)
+

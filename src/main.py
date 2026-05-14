@@ -77,9 +77,9 @@ class MainWindow(QMainWindow):
         toolbar.addWidget(right_spacer)
 
         # settings button
-        settings_icon = QIcon(str(self.ICONS_PATH / "settings.svg"))
-        settings_btn = QAction(settings_icon, "Settings", self)
-        toolbar.addAction(settings_btn)
+        # settings_icon = QIcon(str(self.ICONS_PATH / "settings.svg"))
+        # settings_btn = QAction(settings_icon, "Settings", self)
+        # toolbar.addAction(settings_btn)
 
     def _set_toolbar_title(self, title: str):
         self.toolbar_title.setText(title)
