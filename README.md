@@ -2,6 +2,8 @@
 
 TukeyLab is a desktop data exploration workspace for organizing project datasets, creating interactive visualizations, generating dataset summaries, and keeping project notes in one place.
 
+***
+
 ## Main Features
 
 - Create and manage project-based workspaces
@@ -20,3 +22,7 @@ TukeyLab is a desktop data exploration workspace for organizing project datasets
 4. Create visualizations to explore patterns and relationships
 5. Generate info documents or add project notes
 6. Use the chatbot to assist with analysis and interpretation
+
+***
+
+> A ***demoProject*** has been included in the repository as a reference implementation to illustrate the application’s features and expected usage.
