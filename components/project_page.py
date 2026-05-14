@@ -32,7 +32,7 @@ import json
 
 from components.chatbot import ChatbotGUI
 from components.project_ai import DatasetCatalogController
-from components.project_widgets import ButtonList, ItemCreationMenu, ItemViewer, NotesWidget
+from components.project_widgets import ButtonList, ItemCreationMenu, ItemViewer
 
 def make_dataframe(filepath: str):
     # load the file path based on the type
@@ -81,19 +81,7 @@ class ProjectPage(QMainWindow):
 
         # -- Set up the middle widget -- #
         self.item_view = ItemViewer()
-        self.notes_app = NotesWidget()
-
-        self.middle_stack = QStackedWidget()
-        self.middle_stack.addWidget(self.item_view) # index 0
-        self. middle_stack.addWidget(self.notes_app) # index 1
-
-        middle_layout = QVBoxLayout()
-        middle_layout.setContentsMargins(10, top_padding, 10, 10)
-        middle_layout.addWidget(self. middle_stack)
-        #middle_layout.addStretch()
-
-        middle_container = QWidget()
-        middle_container.setLayout(middle_layout)
+        self.item_view.save_note.connect(self._save_note)
 
         # -- Set up the right bar -- #
         self.item_creation_menu = ItemCreationMenu()
@@ -117,7 +105,7 @@ class ProjectPage(QMainWindow):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
         main_layout.addWidget(left_container, 0)
-        main_layout.addWidget(middle_container, 3)
+        main_layout.addWidget(self.item_view, 3)
         main_layout.addWidget(right_container, 0)
 
         main_container = QWidget()
@@ -151,7 +139,7 @@ class ProjectPage(QMainWindow):
             if str(file).endswith(".csv"):
                 self._load_info(file)
             if str(file).endswith(".txt"):
-                pass
+                self._load_note()
 
     def save_schema(self):
         # create a blank schema and load in basic information
@@ -183,6 +171,22 @@ class ProjectPage(QMainWindow):
         schema_path = self.PROJECT_DIR / (self.FULL_ID + ".json")
         with schema_path.open("w", encoding="utf-8") as f:
             json.dump(proj_schema, f, indent=2)
+
+    def _save_note(self, note: str):
+        docs_dir = self.PROJECT_DIR / "docs"
+        docs_dir.mkdir(parents=True, exist_ok=True)
+
+        note_path = docs_dir / "ProjectNotes.txt"
+        note_path.write_text(note, encoding="utf-8")
+
+    def _load_note(self):
+        note_path = self.PROJECT_DIR / "docs" / "ProjectNotes.txt"
+        if not note_path.exists():
+            note = ""
+        else:
+            note = note_path.read_text(encoding="utf-8")
+
+        self.item_view.show_item("notes", note)
 
     def _load_file(self, filepath):
         # create dataframe from source
@@ -265,24 +269,18 @@ class ProjectPage(QMainWindow):
     def _handle_new_item(self, item_data: list):
         item_type = item_data[0]
         if item_type == "notes":
-            if self.middle_stack.currentIndex() == 0:
-                self.middle_stack.setCurrentIndex(1)
-                return
-
-        if self.middle_stack.currentIndex() == 1:
-            self.middle_stack.setCurrentIndex(0)
-
-        metadata = item_data[1]
-
-        if item_type == "data":
-            imported_name = self._import_datafile(metadata)
-            self._load_file(imported_name)
-        elif item_type == "graph":
-            self._import_graph(metadata)
-            self._load_graph(metadata)
-        elif item_type == "doc":
-            self._import_info(metadata)
-            self._load_info(metadata)
+            self.item_view.show_item("notes", "")
+        else:
+            metadata = item_data[1]
+            if item_type == "data":
+                imported_name = self._import_datafile(metadata)
+                self._load_file(imported_name)
+            elif item_type == "graph":
+                self._import_graph(metadata)
+                self._load_graph(metadata)
+            elif item_type == "doc":
+                self._import_info(metadata)
+                self._load_info(metadata)
 
     # copies the newly created graph's metadata into the project directory
     def _import_graph(self, metadata: dict):
@@ -307,19 +305,12 @@ class ProjectPage(QMainWindow):
 
     def _view_dataframe(self, name: str):
         self.item_view.show_item("data", name)
-        if self.middle_stack.currentIndex() == 1:
-            self.middle_stack.setCurrentIndex(0)
 
     def _view_item(self, name: str):
-        # Start rendering content BEFORE switching the stack so the
-        # WebEngine has time to load while the transition happens.
         if name in self.project_graphs.keys():
             metadata = self.project_graphs[name]
             self.item_view.show_item("graph", metadata)
         elif name in self.project_infos.keys():
             metadata = self.project_infos[name]
-            self.item_view.show_item("doc", metadata)
-
-        if self.middle_stack.currentIndex() == 1:
-            self.middle_stack.setCurrentIndex(0)
+            self.item_view.show_item("data_doc", metadata)
 

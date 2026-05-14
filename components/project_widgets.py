@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (
     QWidget,
     QPushButton,
     QToolButton,
+    QToolBar,
     QVBoxLayout,
     QFileDialog,
     QTableWidget,
@@ -31,7 +32,7 @@ import shutil
 import json
 
 from components.custom_dialogs import SingleFileGraph, DataInformation
-from components.helper_widgets import PlotlyWebEngine
+from components.helper_widgets import PlotlyWebEngine, NotesWidget
 
 
 class WrappingButton(QPushButton):
@@ -266,51 +267,9 @@ class ItemCreationMenu(QWidget):
         # set popup to none
         self.popup = None
 
-class NotesWidget(QWidget):
-    def __init__(self):
-        super().__init__()
-
-        # button to toggle preview
-        self.toggle_btn = QPushButton("Preview File")
-        self.toggle_btn.setCheckable(True)
-        self.toggle_btn.clicked.connect(self.toggle_preview)
-
-        # stacked widget to switch modes
-        self.stack = QStackedWidget()
-
-        # markdown editor mode
-        self.editor = QPlainTextEdit()
-        self.editor.setPlaceholderText("Type your markdown here...")
-
-        # markdown preview mode
-        self.viewer = QTextEdit()
-        self.viewer.setReadOnly(True)
-        self.viewer.setStyleSheet("QTextEdit { color: rgb(220, 220, 220); background-color: #1e1e1e; }")
-
-        self.stack.addWidget(self.editor)  # Index 0
-        self.stack.addWidget(self.viewer)  # Index 1
-
-        self.layout = QVBoxLayout()
-        self.layout.addWidget(self.toggle_btn)
-        self.layout.addWidget(self.stack)
-
-        self.setLayout(self.layout)
-
-    def toggle_preview(self):
-        if self.toggle_btn.isChecked():
-            # switch to preview Mode
-            markdown_text = self.editor.toPlainText()
-            self.viewer.setMarkdown(markdown_text) # display as markdown
-
-            self.stack.setCurrentIndex(1)
-            self.toggle_btn.setText("Edit Mode")
-        else:
-            # switch to edit Mode
-            self.stack.setCurrentIndex(0)
-            self.toggle_btn.setText("Preview Mode")
-
-
 class ItemViewer(QWidget):
+    save_note = Signal(str)
+
     single_file_graphs = [
         "Histogram",
         "Scatter Plot",
@@ -323,7 +282,6 @@ class ItemViewer(QWidget):
         "Violin Plot",
         "Pie Chart",
     ]
-
     curr_item = ""
 
     def __init__(self):
@@ -334,7 +292,8 @@ class ItemViewer(QWidget):
         # -- define the different item view types -- #
         self.table = QTableWidget()     # for viewing dataframes
         self.graph = PlotlyWebEngine()       # for viewing graphs
-        self.doc = QWidget()           # for viewing docs
+        self.doc = NotesWidget()         # for viewing docs
+        self.doc.save_note.connect(self.save_note.emit)
 
         self.view_stack = QStackedWidget()
         self.view_stack.addWidget(self.table)
@@ -368,8 +327,10 @@ class ItemViewer(QWidget):
             self._show_data(item_data)
         elif item_type == "graph":
             self._show_graph(item_data)
-        elif item_type == "doc":
-            self._show_doc(item_data)
+        elif item_type == "data_doc":
+            self._show_data_doc(item_data)
+        elif item_type == "notes":
+            self._show_notes(item_data)
 
     def _show_data(self, name: str):
         if name == self.curr_item:
@@ -419,7 +380,7 @@ class ItemViewer(QWidget):
         # set the graph as the active view
         self.view_stack.setCurrentWidget(self.graph)
 
-    def _show_doc(self, metadata):
+    def _show_data_doc(self, metadata):
         if metadata is None or not metadata:
             return
 
@@ -445,3 +406,9 @@ class ItemViewer(QWidget):
                 self.table.setItem(row_idx, col_idx, QTableWidgetItem(display_value))
 
         self.view_stack.setCurrentWidget(self.table)
+
+    def _show_notes(self, note: str):
+        self.view_stack.setCurrentWidget(self.doc)
+
+        if note != "":
+            self.doc.open_note(note)

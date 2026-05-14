@@ -1,7 +1,17 @@
 
-from PySide6.QtCore import QUrl
+from PySide6.QtCore import QUrl, Signal
 from PySide6.QtGui import QColor
-
+from PySide6.QtWidgets import (
+    QWidget,
+    QPushButton,
+    QVBoxLayout,
+    QLabel,
+    QStackedWidget,
+    QHBoxLayout,
+    QPlainTextEdit,
+    QTextEdit,
+    QMessageBox
+)
 
 import pandas as pd
 import tempfile
@@ -177,3 +187,78 @@ class PlotlyWebEngine(QWebEngineView):
 
         return ""
 
+class NotesWidget(QWidget):
+    save_note = Signal(str)
+    def __init__(self):
+        super().__init__()
+
+        self.main_layout = QVBoxLayout(self)
+        self.main_layout.setContentsMargins(0, 0, 0, 0)
+        self.main_layout.setSpacing(0)
+
+        # top menu bar
+        self.top_bar = QWidget()
+        self.top_layout = QHBoxLayout(self.top_bar)
+        self.top_label = QLabel("Project Notes: ")
+
+        self.save_btn = QPushButton("Save")
+        self.save_btn.clicked.connect(self.save)
+
+        self.toggle_btn = QPushButton("Preview")
+        self.toggle_btn.setCheckable(True)
+        self.toggle_btn.clicked.connect(self.toggle_preview)
+
+        self.top_layout.addWidget(self.top_label)
+        self.top_layout.addStretch()
+        self.top_layout.addWidget(self.save_btn)
+        self.top_layout.addWidget(self.toggle_btn)
+
+        # stacked widget to switch modes
+        self.stack = QStackedWidget()
+
+        # markdown editor mode
+        self.editor = QPlainTextEdit()
+        self.editor.setPlaceholderText("Type your markdown here...")
+        self.editor.setStyleSheet("QPlainTextEdit { border: 1px solid #404040; border-radius: 8px; background-color: #252526; color: #e7e7e7; padding: 8px; font-size: 12px; }")
+
+        # markdown preview mode
+        self.viewer = QTextEdit()
+        self.viewer.setReadOnly(True)
+        self.viewer.setStyleSheet("QTextEdit { border: 1px solid #404040; border-radius: 8px; background-color: #252526; color: #e7e7e7; padding: 8px; font-size: 12px; }")
+
+        self.stack.addWidget(self.editor)  # Index 0
+        self.stack.addWidget(self.viewer)  # Index 1
+
+        # set up main layout
+        self.main_layout.addWidget(self.top_bar)
+        self.main_layout.addWidget(self.stack)
+        self.setLayout(self.main_layout)
+
+    def save(self):
+        msg = QMessageBox()
+        msg.setWindowTitle("Confirm Save")
+        msg.setText("Are you sure you want to save? Saving the project notes will overwrite the previous save.")
+
+        accept_btn = msg.addButton("Save Anyway", QMessageBox.AcceptRole)
+        deny_btn = msg.addButton("Cancel", QMessageBox.RejectRole)
+        msg.exec()
+
+        if msg.clickedButton() == accept_btn:
+            self.save_note.emit(self.editor.toPlainText())
+
+    def open_note(self, note: str):
+        self.editor.setPlainText(note)
+        self.viewer.setMarkdown(note)
+
+    def toggle_preview(self):
+        if self.toggle_btn.isChecked():
+            # switch to preview Mode
+            markdown_text = self.editor.toPlainText()
+            self.viewer.setMarkdown(markdown_text) # display as markdown
+
+            self.stack.setCurrentIndex(1)
+            self.toggle_btn.setText("Edit Mode")
+        else:
+            # switch to edit Mode
+            self.stack.setCurrentIndex(0)
+            self.toggle_btn.setText("Preview Mode")
